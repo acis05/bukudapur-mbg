@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <h2 class="title">Dashboard</h2>
+      <p class="subtitle">
+        Kode: <b>{{ access.code }}</b>
+        {% if access.dapur_name %}
+          • Dapur: <b>{{ access.dapur_name }}</b>
+        {% endif %}
+      </p>
+    </div>
+
+    <form method="post" action="{{ url_for('main.logout') }}">
+      <button class="btn btn-ghost" type="submit">Keluar</button>
+    </form>
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="card soft">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <span class="pill">Status: {{ (access.status or "")|upper }}</span>
+      <p class="subtitle" style="margin-top:8px;">
+        Berlaku sampai: <b>{{ access.expires_at }}</b><br>
+        Sisa waktu: <b>{{ remaining_hours or 0 }} jam</b>
+      </p>
+    </div>
+    {% if access.status == "trial" %}
+      <div class="pill">Trial Aktif</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="card">
+  <h3 class="title">Menu Utama</h3>
+  <p class="subtitle">Akses cepat fitur utama BukuDapur MBG</p>
+  <hr class="sep">
+
+  <div class="row" style="flex-wrap:wrap; gap:10px;">
+    <a class="btn btn-primary" href="{{ url_for('main.cash_home') }}">💰 Kas</a>
+    <a class="btn" href="{{ url_for('main.journals_list') }}">📘 Jurnal</a>
+    <a class="btn" href="{{ url_for('main.purchase_home') }}">🧾 Pembelian</a>
+    <a class="btn" href="{{ url_for('main.ap_payment_home') }}">💸 Bayar Hutang</a>
+    <a class="btn" href="{{ url_for('main.expenses_home') }}">🧾 Biaya</a>
+    <a class="btn" href="{{ url_for('main.stock_usage_home') }}">📦 Pemakaian Stok</a>
+    <a class="btn" href="{{ url_for('main.sales_home') }}">🧾 Penjualan</a>
+    <a class="btn" href="{{ url_for('main.ar_payment_home') }}">✅ Pelunasan Piutang</a>
+
+    <a class="btn" href="{{ url_for('main.report_ledger') }}">📒 Buku Besar</a>
+    <a class="btn" href="{{ url_for('main.report_profit_loss') }}">📊 Laba Rugi</a>
+    <a class="btn" href="{{ url_for('main.report_balance_sheet') }}">📑 Neraca</a>
+    <a class="btn" href="{{ url_for('main.master_home') }}">⚙️ Master Data</a>
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="form-grid">
+  <div class="col-3">
+    <div class="card soft">
+      <p class="subtitle">Saldo Kas/Bank</p>
+      <h3 class="title">Rp {{ "{:,.0f}".format((cash_total or 0)|float) }}</h3>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="card soft">
+      <p class="subtitle">Pendapatan Usaha</p>
+      <h3 class="title">Rp {{ "{:,.0f}".format((rev_main or 0)|float) }}</h3>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="card soft">
+      <p class="subtitle">HPP</p>
+      <h3 class="title">Rp {{ "{:,.0f}".format((hpp or 0)|float) }}</h3>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="card soft">
+      <p class="subtitle">Laba Bersih</p>
+      <h3 class="title">Rp {{ "{:,.0f}".format((net_profit or 0)|float) }}</h3>
+    </div>
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="form-grid">
+  <div class="col-6 card">
+    <h3 class="title">Profit vs Beban (Ringkas)</h3>
+    <p class="subtitle">Pendapatan, HPP, Beban, dan Luar Usaha</p>
+    <div style="height:280px;">
+      <canvas id="chartPL"></canvas>
+    </div>
+  </div>
+
+  <div class="col-6 card">
+    <h3 class="title">Top Beban Operasional</h3>
+    <p class="subtitle">5 biaya terbesar (tipe: Beban)</p>
+    <div style="height:280px;">
+      <canvas id="chartTopExp"></canvas>
+    </div>
+  </div>
+
+  <div class="col-12 card">
+    <h3 class="title">Saldo Kas & Bank</h3>
+    <p class="subtitle">Saldo per akun kas/bank</p>
+    <div style="height:340px;">
+      <canvas id="chartCash"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  if (!window.Chart) {
+    console.error("Chart.js belum ter-load. Pastikan base.html sudah include Chart.js");
+    return;
+  }
+
+  function toNumber(x) {
+    const n = Number(x);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function normalizePie(labels, values, dummyLabel) {
+    const L = Array.isArray(labels) ? labels : [];
+    const V = Array.isArray(values) ? values.map(toNumber) : [];
+    const sumAbs = V.reduce((a, b) => a + Math.abs(b), 0);
+
+    if (L.length === 0 || V.length === 0 || sumAbs === 0) {
+      return { labels: [dummyLabel], values: [1], isDummy: true };
+    }
+    return { labels: L, values: V.map(v => Math.abs(v)), isDummy: false };
+  }
+
+  function rupiah(n) {
+    return "Rp " + toNumber(n).toLocaleString("id-ID");
+  }
+
+  // ✅ AMAN: ambil dari dict keys (bukan .values/.labels)
+  const plLabels = {{ (chart_pl["labels"] if chart_pl and chart_pl.get("labels") else []) | tojson }};
+  const plValues = {{ (chart_pl["values"] if chart_pl and chart_pl.get("values") else []) | tojson }};
+
+  const expLabels = {{ (chart_top_exp["labels"] if chart_top_exp and chart_top_exp.get("labels") else []) | tojson }};
+  const expValues = {{ (chart_top_exp["values"] if chart_top_exp and chart_top_exp.get("values") else []) | tojson }};
+
+  const cashLabels = {{ (chart_cash["labels"] if chart_cash and chart_cash.get("labels") else []) | tojson }};
+  const cashValues = {{ (chart_cash["values"] if chart_cash and chart_cash.get("values") else []) | tojson }};
+
+  // Profit vs Beban
+  const pl = normalizePie(plLabels, plValues, "Belum ada data");
+  const ctxPL = document.getElementById("chartPL");
+  if (ctxPL) {
+    new Chart(ctxPL, {
+      type: "doughnut",
+      data: { labels: pl.labels, datasets: [{ data: pl.values }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "55%",
+        plugins: {
+          legend: { position: "bottom" },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                if (pl.isDummy) return ctx.label;
+                return `${ctx.label}: ${rupiah(ctx.raw)}`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Top Beban
+  const topExp = normalizePie(expLabels, expValues, "Belum ada beban");
+  const ctxExp = document.getElementById("chartTopExp");
+  if (ctxExp) {
+    new Chart(ctxExp, {
+      type: "pie",
+      data: { labels: topExp.labels, datasets: [{ data: topExp.values }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom" },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                if (topExp.isDummy) return ctx.label;
+                return `${ctx.label}: ${rupiah(ctx.raw)}`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Cash & Bank (label minus)
+  const cashLabelsSigned = (Array.isArray(cashLabels) ? cashLabels : []).map((lbl, i) => {
+    const v = toNumber((cashValues || [])[i]);
+    return v < 0 ? `${lbl} (minus)` : lbl;
+  });
+  const cash = normalizePie(cashLabelsSigned, cashValues, "Belum ada saldo");
+
+  const ctxCash = document.getElementById("chartCash");
+  if (ctxCash) {
+    new Chart(ctxCash, {
+      type: "pie",
+      data: { labels: cash.labels, datasets: [{ data: cash.values }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom" },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                if (cash.isDummy) return ctx.label;
+                return `${ctx.label}: ${rupiah(ctx.raw)}`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+})();
+</script>
+
+{% endblock %}

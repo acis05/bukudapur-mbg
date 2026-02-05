@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <div>
+      <h3 class="title">Penjualan (Invoice)</h3>
+      <p class="subtitle">Mencatat penjualan & piutang</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('main.sales_invoice_create') }}">+ Invoice Baru</a>
+  </div>
+
+  <hr class="sep">
+
+  {% if invoices and invoices|length > 0 %}
+  <table>
+    <thead>
+      <tr>
+        <th>Tanggal</th>
+        <th>No Invoice</th>
+        <th>Pelanggan</th>
+        <th style="text-align:right;">Total</th>
+        <th style="text-align:right;">Dibayar</th>
+        <th style="text-align:right;">Sisa</th>
+        <th>Status</th>
+        <th style="text-align:right;">Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inv in invoices %}
+      <tr>
+        <td>{{ inv.date.strftime('%Y-%m-%d') }}</td>
+        <td>{{ inv.invoice_no }}</td>
+        <td>{{ inv.customer_name }}</td>
+        <td style="text-align:right;">Rp {{ "{:,.0f}".format(inv.total_amount) }}</td>
+        <td style="text-align:right;">Rp {{ "{:,.0f}".format(inv.paid_amount or 0) }}</td>
+        <td style="text-align:right;">Rp {{ "{:,.0f}".format(inv.total_amount - (inv.paid_amount or 0)) }}</td>
+        <td>
+          {% if (inv.paid_amount or 0) == 0 %}
+            <span class="badge">Belum Bayar</span>
+          {% elif (inv.paid_amount or 0) < inv.total_amount %}
+            <span class="badge warn">Sebagian</span>
+          {% else %}
+            <span class="badge success">Lunas</span>
+          {% endif %}
+        </td>
+        <td style="text-align:right;">
+          <div class="row" style="gap:6px; justify-content:flex-end;">
+            <a class="btn btn-ghost"
+               href="{{ url_for('main.sales_invoice_edit', invoice_id=inv.id) }}">Edit</a>
+
+            {% if (inv.paid_amount or 0) == 0 %}
+            <form method="post"
+                  action="{{ url_for('main.sales_invoice_delete', invoice_id=inv.id) }}"
+                  onsubmit="return confirm('Hapus invoice ini? Jurnal & piutang akan ikut terhapus.');">
+              <button class="btn btn-danger" type="submit">Hapus</button>
+            </form>
+            {% else %}
+              <span class="muted">🔒</span>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">Belum ada invoice penjualan.</p>
+  {% endif %}
+</div>
+{% endblock %}

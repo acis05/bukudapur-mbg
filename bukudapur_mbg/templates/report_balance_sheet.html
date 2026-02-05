@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <h3 class="title">Neraca</h3>
+      <p class="subtitle">Per Tanggal: {{ as_of_display }}</p>
+    </div>
+
+    <a class="btn btn-ghost"
+       href="{{ url_for('main.export_balance_sheet_pdf', as_of=as_of) }}">
+      ⬇ Export PDF
+    </a>
+  </div>
+
+  <hr class="sep">
+
+  <form method="get" class="row" style="gap:10px; align-items:end; margin:10px 0;">
+    <div>
+      <label class="subtitle">Per Tanggal</label>
+      <input type="date" name="as_of" value="{{ as_of }}" class="input">
+    </div>
+
+    <button class="btn btn-primary" type="submit">Terapkan</button>
+    <a class="btn" href="{{ url_for('main.report_balance_sheet') }}">Reset</a>
+
+    <a class="btn btn-ghost"
+       href="{{ url_for('main.export_balance_sheet_pdf', as_of=as_of) }}">
+      Export PDF
+    </a>
+  </form>
+
+  <hr class="sep">
+
+  <h4>ASET</h4>
+  <table>
+    {% for a, amt in asset_data %}
+    <tr>
+      <td>{{ a.name }}</td>
+      <td style="text-align:right;">Rp {{ "{:,.0f}".format(amt) }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <th>Total Aset</th>
+      <th style="text-align:right;">Rp {{ "{:,.0f}".format(total_assets) }}</th>
+    </tr>
+  </table>
+
+  <div class="spacer"></div>
+
+  <h4>KEWAJIBAN</h4>
+  <table>
+    {% for a, amt in liab_data %}
+    <tr>
+      <td>{{ a.name }}</td>
+      <td style="text-align:right;">Rp {{ "{:,.0f}".format(amt) }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <th>Total Kewajiban</th>
+      <th style="text-align:right;">Rp {{ "{:,.0f}".format(total_liab) }}</th>
+    </tr>
+  </table>
+
+  <div class="spacer"></div>
+
+  <h4>EKUITAS</h4>
+  <table>
+    {% for a, amt in eq_data %}
+    <tr>
+      <td>{{ a.name }}</td>
+      <td style="text-align:right;">Rp {{ "{:,.0f}".format(amt) }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <th>Total Ekuitas</th>
+      <th style="text-align:right;">Rp {{ "{:,.0f}".format(total_eq) }}</th>
+    </tr>
+  </table>
+
+  <div class="spacer"></div>
+
+  <div class="card soft">
+    <h4>Total Aset = Kewajiban + Ekuitas</h4>
+    <p class="muted">
+      Rp {{ "{:,.0f}".format(total_assets) }}
+      =
+      Rp {{ "{:,.0f}".format(total_liab + total_eq) }}
+    </p>
+
+    {% if diff != 0 %}
+      <p class="muted" style="margin-top:8px;">
+        <b>Selisih:</b> Rp {{ "{:,.0f}".format(diff) }}
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

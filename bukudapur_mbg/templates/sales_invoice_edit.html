@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <div>
+      <h3 class="title">Edit Invoice Penjualan</h3>
+      <p class="subtitle">Tidak bisa diedit jika sudah ada pembayaran</p>
+    </div>
+    <a class="btn" href="{{ url_for('main.sales_invoice_home') }}">Kembali</a>
+  </div>
+
+  <hr class="sep">
+
+  {% if has_payment %}
+    <div class="card soft warn">
+      Invoice ini sudah memiliki pembayaran. Edit dinonaktifkan.
+    </div>
+  {% else %}
+  <form method="post" class="row" style="gap:10px; flex-wrap:wrap;">
+    <div>
+      <label class="subtitle">Tanggal</label>
+      <input type="date" name="date" class="input"
+             value="{{ invoice.date.strftime('%Y-%m-%d') }}" required>
+    </div>
+
+    <div>
+      <label class="subtitle">No Invoice</label>
+      <input type="text" name="invoice_no" class="input"
+             value="{{ invoice.invoice_no }}" required>
+    </div>
+
+    <div style="min-width:260px;">
+      <label class="subtitle">Pelanggan</label>
+      <input type="text" name="customer_name" class="input"
+             value="{{ invoice.customer_name }}" required>
+    </div>
+
+    <div>
+      <label class="subtitle">Total</label>
+      <input type="number" name="total_amount" class="input"
+             value="{{ invoice.total_amount }}" min="0" step="1" required>
+    </div>
+
+    <div style="min-width:260px;">
+      <label class="subtitle">Memo</label>
+      <input type="text" name="memo" class="input" value="{{ invoice.memo or '' }}">
+    </div>
+
+    <div style="width:100%;"></div>
+
+    <button class="btn btn-primary" type="submit">Simpan Perubahan</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

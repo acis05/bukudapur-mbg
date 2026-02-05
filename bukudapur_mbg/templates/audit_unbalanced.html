@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3 class="title">Audit Jurnal Tidak Seimbang</h3>
+  <p class="subtitle">Sampai tanggal: {{ dto }}</p>
+  <table>
+    <tr>
+      <th>ID</th><th>Tanggal</th><th>Memo</th><th>Debit</th><th>Kredit</th><th>Selisih</th>
+    </tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.date.strftime("%Y-%m-%d") }}</td>
+      <td>{{ r.memo or "-" }}</td>
+      <td style="text-align:right">{{ "{:,.0f}".format(r.td) }}</td>
+      <td style="text-align:right">{{ "{:,.0f}".format(r.tc) }}</td>
+      <td style="text-align:right">{{ "{:,.0f}".format(r.td - r.tc) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

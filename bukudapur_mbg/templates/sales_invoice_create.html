@@ -1,0 +1,89 @@
+@bp.route("/sales/invoices/create", methods=["GET", "POST"])
+def sales_invoice_create():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+
+    ar_accounts = Account.query.filter(Account.type == "Akun Piutang").order_by(Account.code.asc()).all()
+    rev_accounts = Account.query.filter(Account.type == "Pendapatan").order_by(Account.code.asc()).all()
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "save").strip()
+
+        date_str = (request.form.get("date") or "").strip()
+        invoice_no = (request.form.get("invoice_no") or "").strip()
+        customer_name = (request.form.get("customer_name") or "").strip()
+        customer_phone = (request.form.get("customer_phone") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+        ar_code = (request.form.get("ar_account") or "").strip()
+        rev_code = (request.form.get("revenue_account") or "").strip()
+        total_amount_str = (request.form.get("total_amount") or "").strip()
+
+        # ==== Validasi wajib ====
+        if not date_str or not invoice_no or not customer_name or not ar_code or not rev_code or not total_amount_str:
+            flash("Tanggal, No Invoice, Customer, Akun Piutang, Akun Penjualan, dan Total wajib diisi.", "error")
+            return redirect(url_for("main.sales_invoice_create"))
+
+        # ==== Validasi total ====
+        try:
+            total_amount = float(total_amount_str)
+            if total_amount <= 0:
+                raise ValueError()
+        except ValueError:
+            flash("Total invoice harus angka > 0.", "error")
+            return redirect(url_for("main.sales_invoice_create"))
+
+        # ==== Cek akun ====
+        ar_acc = Account.query.filter_by(code=ar_code).first()
+        rev_acc = Account.query.filter_by(code=rev_code).first()
+        if not ar_acc or not rev_acc:
+            flash("Akun piutang / akun penjualan tidak valid.", "error")
+            return redirect(url_for("main.sales_invoice_create"))
+
+        # ==== CEK DUPLIKAT invoice_no (biar gak IntegrityError) ====
+        exists = SalesInvoice.query.filter_by(invoice_no=invoice_no).first()
+        if exists:
+            flash(f"No Invoice '{invoice_no}' sudah dipakai. Silakan ganti nomor.", "error")
+            return redirect(url_for("main.sales_invoice_create"))
+
+        # ==== Buat invoice SEKALI ====
+        invoice = SalesInvoice(
+            date=_parse_date(date_str),
+            invoice_no=invoice_no,
+            customer_name=customer_name,
+            customer_phone=customer_phone or None,
+            notes=notes or None,
+            ar_account_code=ar_acc.code,
+            ar_account_name=ar_acc.name,
+            revenue_account_code=rev_acc.code,
+            revenue_account_name=rev_acc.name,
+            total_amount=total_amount,
+            status="unpaid",
+            paid_amount=0.0,
+        )
+
+        db.session.add(invoice)
+        db.session.flush()  # dapat invoice.id
+
+        # ==== Jurnal otomatis (kalau kamu pakai) ====
+        entry = _create_journal_for_invoice(invoice)
+        invoice.journal_entry_id = entry.id
+
+        db.session.commit()
+        flash("Invoice tersimpan.", "success")
+
+        # ==== Redirect sesuai tombol ====
+        if action == "save_pdf":
+            return redirect(url_for("main.export_sales_invoice_pdf", invoice_id=invoice.id))
+
+        return redirect(url_for("main.sales_invoice_detail", invoice_id=invoice.id))
+
+    # GET
+    return render_template(
+        "sales_invoice_create.html",
+        ar_accounts=ar_accounts,
+        rev_accounts=rev_accounts,
+        next_no=_next_invoice_no() if "_next_invoice_no" in globals() else "",
+        today=datetime.utcnow().strftime("%Y-%m-%d"),
+    )

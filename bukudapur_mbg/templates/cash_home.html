@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <h3 class="title">Kas</h3>
+      <p class="subtitle">Pemasukan & Pengeluaran Kas/Bank</p>
+    </div>
+  </div>
+
+  <hr class="sep">
+
+  <form method="post" class="row" style="gap:10px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="subtitle">Tanggal</label>
+      <input type="date" name="date" class="input" required>
+    </div>
+
+    <div>
+      <label class="subtitle">Tipe</label>
+      <select name="direction" class="input" required>
+        <option value="in">Kas Masuk</option>
+        <option value="out">Kas Keluar</option>
+      </select>
+    </div>
+
+    <div style="min-width:220px;">
+      <label class="subtitle">Akun Kas/Bank</label>
+      <select name="cash_account" class="input" required>
+        {% for a in accounts %}
+          {% if a.type == "Kas & Bank" %}
+            <option value="{{ a.code }}">{{ a.code }} - {{ a.name }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width:220px;">
+      <label class="subtitle">Akun Lawan</label>
+      <select name="counter_account" class="input" required>
+        {% for a in accounts %}
+          <option value="{{ a.code }}">{{ a.code }} - {{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="subtitle">Nominal</label>
+      <input type="number" name="amount" class="input" step="1" min="1" required>
+    </div>
+
+    <div style="min-width:240px;">
+      <label class="subtitle">Memo</label>
+      <input type="text" name="memo" class="input" placeholder="opsional">
+    </div>
+
+    <button class="btn btn-primary" type="submit">Simpan</button>
+  </form>
+
+  <hr class="sep">
+
+  <h4>Transaksi Terakhir</h4>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Tanggal</th>
+        <th>Tipe</th>
+        <th>Akun Kas</th>
+        <th>Akun Lawan</th>
+        <th style="text-align:right;">Nominal</th>
+        <th>Memo</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in txs %}
+      <tr>
+        <td>{{ tx.date.strftime("%Y-%m-%d") if tx.date else "-" }}</td>
+        <td>{{ "Masuk" if tx.direction == "in" else "Keluar" }}</td>
+        <td>{{ tx.cash_account_code }} - {{ tx.cash_account_name }}</td>
+        <td>{{ tx.counter_account_code }} - {{ tx.counter_account_name }}</td>
+        <td style="text-align:right;">Rp {{ "{:,.0f}".format(tx.amount or 0) }}</td>
+        <td>{{ tx.memo or "-" }}</td>
+        <td class="row" style="gap:6px;">
+          <a class="btn btn-ghost" href="{{ url_for('main.cash_edit', tx_id=tx.id) }}">Edit</a>
+
+          <form method="post" action="{{ url_for('main.cash_delete', tx_id=tx.id) }}"
+                onsubmit="return confirm('Hapus transaksi ini?');">
+            <button class="btn btn-danger" type="submit">Hapus</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="muted">Belum ada transaksi.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

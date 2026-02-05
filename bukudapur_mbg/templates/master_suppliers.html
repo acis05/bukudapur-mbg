@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h3 style="margin:0;">Supplier</h3>
+    <a class="btn" href="{{ url_for('main.master_home') }}">Kembali</a>
+  </div>
+
+  <form method="post" style="margin-top:14px;">
+    <div class="row">
+      <div>
+        <label>Nama Supplier</label>
+        <input name="name" placeholder="Toko Sembako A" />
+      </div>
+      <div>
+        <label>No. HP (opsional)</label>
+        <input name="phone" placeholder="08xxxx" />
+      </div>
+      <div style="flex:1;">
+        <label>Alamat (opsional)</label>
+        <input name="address" placeholder="Alamat..." />
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <button class="btn btn-primary" type="submit">Tambah Supplier</button>
+    </div>
+  </form>
+
+  <hr style="margin:18px 0; border:none; border-top:1px solid #eee;" />
+
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%;">
+    <tr>
+      <th>Nama</th><th>HP</th><th>Alamat</th>
+    </tr>
+    {% for s in suppliers %}
+    <tr>
+      <td>{{ s.name }}</td>
+      <td>{{ s.phone or "" }}</td>
+      <td>{{ s.address or "" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

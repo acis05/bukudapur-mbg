@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <h3 class="title">Bayar Hutang</h3>
+      <p class="subtitle">Catat pembayaran hutang ke supplier</p>
+    </div>
+  </div>
+
+  <hr class="sep">
+
+  <!-- FORM INPUT -->
+  <form method="post" class="row" style="gap:10px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="subtitle">Tanggal</label>
+      <input type="date" name="date" class="input" required>
+    </div>
+
+    <div style="min-width:260px;">
+      <label class="subtitle">Pembelian (Supplier)</label>
+      <select name="purchase_id" class="input">
+        <option value="">- (Tanpa pilih pembelian)</option>
+        {% for p in purchases %}
+          <option value="{{ p.id }}">
+            {{ p.supplier_name or 'Tanpa Supplier' }} | {{ p.date.strftime('%Y-%m-%d') }} | Rp {{ "{:,.0f}".format(p.total_amount or 0) }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width:220px;">
+      <label class="subtitle">Akun Kas / Bank</label>
+      <select name="cash_account" class="input" required>
+        {% for a in cash_accounts %}
+          <option value="{{ a.code }}">{{ a.code }} - {{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="subtitle">Nominal</label>
+      <input type="number" name="amount" class="input" step="1" min="1" required>
+    </div>
+
+    <div style="min-width:260px;">
+      <label class="subtitle">Memo</label>
+      <input type="text" name="memo" class="input" placeholder="optional">
+    </div>
+
+    <button class="btn btn-primary" type="submit">Simpan</button>
+  </form>
+
+  <hr class="sep">
+
+  <!-- LIST PEMBAYARAN -->
+  <h4>Riwayat Pembayaran Hutang</h4>
+
+  {% if payments and payments|length > 0 %}
+  <table>
+    <thead>
+      <tr>
+        <th>Tanggal</th>
+        <th>Supplier</th>
+        <th>Akun Kas/Bank</th>
+        <th style="text-align:right;">Nominal</th>
+        <th>Memo</th>
+        <th style="text-align:right;">Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pay in payments %}
+      <tr>
+        <td>{{ pay.date.strftime('%Y-%m-%d') }}</td>
+        <td>{{ pay.supplier_name or '-' }}</td>
+        <td>{{ pay.cash_account_code }} - {{ pay.cash_account_name }}</td>
+        <td style="text-align:right;">Rp {{ "{:,.0f}".format(pay.amount or 0) }}</td>
+        <td>{{ pay.memo or '-' }}</td>
+        <td style="text-align:right;">
+          <div class="row" style="gap:6px; justify-content:flex-end;">
+            <a class="btn btn-ghost"
+               href="{{ url_for('main.ap_payment_edit', payment_id=pay.id) }}">
+              Edit
+            </a>
+
+            <form method="post"
+                  action="{{ url_for('main.ap_payment_delete', payment_id=pay.id) }}"
+                  onsubmit="return confirm('Hapus pembayaran hutang ini? Jurnal akan dikembalikan.');">
+              <button class="btn btn-danger" type="submit">Hapus</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">Belum ada pembayaran hutang.</p>
+  {% endif %}
+</div>
+{% endblock %}

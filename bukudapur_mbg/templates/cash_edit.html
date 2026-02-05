@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3 class="title">Edit Transaksi Kas</h3>
+  <p class="subtitle">ID: {{ tx.id }}</p>
+
+  <form method="post" style="margin-top:12px;">
+    <div class="row" style="gap:10px; flex-wrap:wrap;">
+      <div>
+        <label class="subtitle">Tanggal</label>
+        <input class="input" type="date" name="date" value="{{ tx.date.strftime('%Y-%m-%d') }}">
+      </div>
+
+      <div>
+        <label class="subtitle">Tipe</label>
+        <select class="input" name="direction">
+          <option value="in" {% if tx.direction=='in' %}selected{% endif %}>Masuk</option>
+          <option value="out" {% if tx.direction=='out' %}selected{% endif %}>Keluar</option>
+        </select>
+      </div>
+
+      <div style="min-width:220px;">
+        <label class="subtitle">Kas/Bank</label>
+        <select class="input" name="cash_account">
+          {% for a in accounts %}
+            <option value="{{ a.code }}" {% if a.code==tx.cash_account_code %}selected{% endif %}>
+              {{ a.code }} - {{ a.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div style="min-width:220px;">
+        <label class="subtitle">Akun Lawan</label>
+        <select class="input" name="counter_account">
+          {% for a in accounts %}
+            <option value="{{ a.code }}" {% if a.code==tx.counter_account_code %}selected{% endif %}>
+              {{ a.code }} - {{ a.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="subtitle">Nominal</label>
+        <input class="input" type="number" step="0.01" name="amount" value="{{ tx.amount }}">
+      </div>
+    </div>
+
+    <div style="margin-top:10px;">
+      <label class="subtitle">Memo</label>
+      <input class="input" type="text" name="memo" value="{{ tx.memo or '' }}">
+    </div>
+
+    <div class="row" style="gap:10px; margin-top:14px;">
+      <button class="btn btn-primary" type="submit">Simpan</button>
+      <a class="btn" href="{{ url_for('main.cash_home') }}">Batal</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

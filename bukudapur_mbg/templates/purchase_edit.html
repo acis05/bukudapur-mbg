@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <h3 class="title">Edit Pembelian</h3>
+      <p class="subtitle">Update pembelian & stok akan disesuaikan otomatis</p>
+    </div>
+    <a class="btn" href="{{ url_for('main.purchase_home') }}">← Kembali</a>
+  </div>
+
+  <hr class="sep">
+
+  <form method="post" class="row" style="gap:12px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="subtitle">Tanggal</label>
+      <input type="date" name="date" class="input"
+             value="{{ purchase.date.strftime('%Y-%m-%d') if purchase.date else '' }}" required>
+    </div>
+
+    <div style="min-width:240px;">
+      <label class="subtitle">Supplier (opsional)</label>
+      <select name="supplier_id" class="input">
+        <option value="">-</option>
+        {% for s in suppliers %}
+          <option value="{{ s.id }}" {% if purchase.supplier_id == s.id %}selected{% endif %}>
+            {{ s.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width:260px;">
+      <label class="subtitle">Memo</label>
+      <input type="text" name="memo" class="input" value="{{ purchase.memo or '' }}">
+    </div>
+
+    <div style="min-width:240px;">
+      <label class="subtitle">Bahan</label>
+      <select name="item_id" class="input" required>
+        {% for it in items %}
+          <option value="{{ it.id }}" {% if it.id == pitem.item_id %}selected{% endif %}>
+            {{ it.name }} ({{ it.unit }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="subtitle">Qty</label>
+      <input type="number" name="qty" class="input" step="0.01" min="0.01" required
+             value="{{ pitem.qty or 0 }}">
+    </div>
+
+    <div>
+      <label class="subtitle">Harga</label>
+      <input type="number" name="price" class="input" step="1" min="1" required
+             value="{{ pitem.price or 0 }}">
+    </div>
+
+    <button class="btn btn-primary" type="submit">Simpan Perubahan</button>
+  </form>
+
+  <hr class="sep">
+
+  <div class="card soft">
+    <p class="muted">
+      <b>Catatan:</b> Edit pembelian akan:
+      (1) mengembalikan stok & avg_cost item lama,
+      (2) menerapkan stok & avg_cost item baru,
+      (3) rebuild jurnal pembelian.
+    </p>
+  </div>
+</div>
+{% endblock %}

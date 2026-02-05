@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>Masuk dengan Kode Akses</h3>
+
+  <form method="post" action="{{ url_for('main.enter_code') }}">
+    <label>Kode akses</label>
+    <input name="code" placeholder="contoh: BDMBG-7F3A9C2D" />
+    <div style="margin-top:12px;">
+      <button class="btn btn-primary" type="submit">Masuk</button>
+    </div>
+  </form>
+
+  <hr style="margin:18px 0; border:none; border-top:1px solid #eee;" />
+
+  <h3>Trial 3 Hari</h3>
+  <p class="muted">Tanpa email. Sistem akan buatkan kode akses untuk dapur.</p>
+
+  <form method="post" action="{{ url_for('main.create_trial') }}">
+    <label>Nama dapur (opsional)</label>
+    <input name="dapur_name" placeholder="contoh: Dapur MBG Sukamaju" />
+    <div style="margin-top:12px;">
+      <button class="btn" type="submit">Buat Trial 3 Hari</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

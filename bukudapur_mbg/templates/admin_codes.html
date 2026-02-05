@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <h2 class="title">Admin • Kode Akses</h2>
+      <p class="subtitle">Buat / perpanjang / expire kode untuk pelanggan.</p>
+    </div>
+
+    <form method="post" action="{{ url_for('main.admin_logout') }}">
+      <button class="btn btn-ghost" type="submit">Logout Admin</button>
+    </form>
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="form-grid">
+  <div class="col-6">
+    <div class="card">
+      <h3 class="title">Buat Kode Baru</h3>
+      <hr class="sep">
+      <form method="post" action="{{ url_for('main.admin_create_code') }}">
+        <div class="form-grid">
+          <div class="col-12">
+            <label class="label">Nama Dapur</label>
+            <input class="input" name="dapur_name" placeholder="Dapur MBG ..." />
+          </div>
+
+          <div class="col-6">
+            <label class="label">Status</label>
+            <select class="input" name="status">
+              <option value="active">active</option>
+              <option value="trial">trial</option>
+            </select>
+          </div>
+
+          <div class="col-6">
+            <label class="label">Durasi (hari)</label>
+            <input class="input" name="days" type="number" value="30" min="1" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <button class="btn btn-primary" type="submit">Buat Kode</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-6">
+    <div class="card">
+      <h3 class="title">Perpanjang / Expire</h3>
+      <hr class="sep">
+
+      <form method="post" action="{{ url_for('main.admin_extend_code') }}">
+        <label class="label">Kode</label>
+        <input class="input" name="code" placeholder="BDMBG-XXXXXX" required>
+
+        <div class="form-grid" style="margin-top:10px;">
+          <div class="col-6">
+            <label class="label">Tambah hari</label>
+            <input class="input" name="days" type="number" value="30" min="1" required>
+          </div>
+          <div class="col-6">
+            <label class="label">&nbsp;</label>
+            <button class="btn btn-primary" type="submit" style="width:100%;">Extend</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="spacer"></div>
+
+      <form method="post" action="{{ url_for('main.admin_expire_code') }}">
+        <label class="label">Expire kode</label>
+        <div class="row">
+          <input class="input" name="code" placeholder="BDMBG-XXXXXX" required>
+          <button class="btn" type="submit">Expire</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="card">
+  <h3 class="title">Daftar Kode (Terbaru)</h3>
+  <p class="subtitle">Tip: gunakan Extend 30 hari untuk bulanan / 365 hari untuk tahunan.</p>
+  <hr class="sep">
+
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Kode</th>
+          <th>Dapur</th>
+          <th>Status</th>
+          <th>Start</th>
+          <th>Exp</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in codes %}
+          <tr>
+            <td><b>{{ c.code }}</b></td>
+            <td>{{ c.dapur_name or "-" }}</td>
+            <td>{{ c.status }}</td>
+            <td>{{ c.start_at or "-" }}</td>
+            <td>{{ c.expires_at or "-" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="muted">Belum ada data.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

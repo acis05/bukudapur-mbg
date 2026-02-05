@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <h3 class="title">Pemakaian Stok</h3>
+      <p class="subtitle">Kurangi persediaan dan catat HPP</p>
+    </div>
+  </div>
+
+  <hr class="sep">
+
+  <!-- FORM INPUT -->
+  <form method="post" class="row" style="gap:10px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="subtitle">Tanggal</label>
+      <input type="date" name="date" class="input" required>
+    </div>
+
+    <div style="min-width:260px;">
+      <label class="subtitle">Bahan</label>
+      <select name="item_id" class="input" required>
+        {% for it in items %}
+          <option value="{{ it.id }}">
+            {{ it.name }} (stok: {{ (it.stock_qty or 0)|round(2) }} {{ it.unit }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="subtitle">Qty</label>
+      <input type="number" name="qty" class="input" step="0.01" min="0.01" required>
+    </div>
+
+    <div style="min-width:260px;">
+      <label class="subtitle">Akun HPP</label>
+      <select name="hpp_account" class="input" required>
+        {% for a in hpp_accounts %}
+          <option value="{{ a.code }}">{{ a.code }} - {{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="min-width:260px;">
+      <label class="subtitle">Memo</label>
+      <input type="text" name="memo" class="input" placeholder="optional">
+    </div>
+
+    <button class="btn btn-primary" type="submit">Simpan</button>
+  </form>
+
+  <hr class="sep">
+
+  <!-- LIST -->
+  <h4>Riwayat Pemakaian</h4>
+
+  {% if usages and usages|length > 0 %}
+  <table>
+    <thead>
+      <tr>
+        <th>Tanggal</th>
+        <th>Bahan</th>
+        <th style="text-align:right;">Qty</th>
+        <th>Akun HPP</th>
+        <th style="text-align:right;">Total Cost</th>
+        <th>Memo</th>
+        <th style="text-align:right;">Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in usages %}
+      <tr>
+        <td>{{ u.date.strftime('%Y-%m-%d') }}</td>
+        <td>{{ u.item_name }}</td>
+        <td style="text-align:right;">{{ "{:,.2f}".format(u.qty or 0) }}</td>
+        <td>{{ u.hpp_account_code }} - {{ u.hpp_account_name }}</td>
+        <td style="text-align:right;">Rp {{ "{:,.0f}".format(u.total_cost or 0) }}</td>
+        <td>{{ u.memo or '-' }}</td>
+        <td style="text-align:right;">
+          <div class="row" style="gap:6px; justify-content:flex-end;">
+            <a class="btn btn-ghost" href="{{ url_for('main.stock_usage_edit', usage_id=u.id) }}">Edit</a>
+
+            <form method="post"
+                  action="{{ url_for('main.stock_usage_delete', usage_id=u.id) }}"
+                  onsubmit="return confirm('Hapus pemakaian stok ini? Stok & jurnal akan dikembalikan.');">
+              <button class="btn btn-danger" type="submit">Hapus</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">Belum ada pemakaian stok.</p>
+  {% endif %}
+</div>
+{% endblock %}

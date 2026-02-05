@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h3 style="margin:0;">Bahan / Stok</h3>
+    <a class="btn" href="{{ url_for('main.master_home') }}">Kembali</a>
+  </div>
+
+  <form method="post" style="margin-top:14px;">
+    <div class="row">
+      <div>
+        <label>Nama Bahan</label>
+        <input name="name" placeholder="Beras" />
+      </div>
+      <div>
+        <label>Kategori (opsional)</label>
+        <input name="category" placeholder="Sembako" />
+      </div>
+      <div>
+        <label>Satuan</label>
+        <input name="unit" placeholder="kg / liter / pcs" />
+      </div>
+      <div>
+        <label>Minimal Stok</label>
+        <input name="min_stock" placeholder="0" />
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <button class="btn btn-primary" type="submit">Tambah Bahan</button>
+    </div>
+  </form>
+
+  <hr style="margin:18px 0; border:none; border-top:1px solid #eee;" />
+
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%;">
+    <tr>
+      <th>Nama</th><th>Kategori</th><th>Satuan</th><th>Min</th><th>Stok</th><th>Avg Cost</th>
+    </tr>
+    {% for i in items %}
+    <tr>
+      <td>{{ i.name }}</td>
+      <td>{{ i.category or "" }}</td>
+      <td>{{ i.unit }}</td>
+      <td>{{ i.min_stock }}</td>
+      <td>{{ i.stock_qty }}</td>
+      <td>{{ i.avg_cost }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

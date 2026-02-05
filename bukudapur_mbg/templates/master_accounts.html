@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h3 style="margin:0;">Akun (COA)</h3>
+    <a class="btn" href="{{ url_for('main.master_home') }}">Kembali</a>
+  </div>
+
+  <form method="post" style="margin-top:14px;">
+    <div class="row">
+      <div>
+        <label>Kode</label>
+        <input name="code" placeholder="1010" />
+      </div>
+      <div>
+        <label>Nama</label>
+        <input name="name" placeholder="Kas Tunai" />
+      </div>
+      <div>
+        <label>Tipe</label>
+        <input name="type" placeholder="asset / expense / revenue" />
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <button class="btn btn-primary" type="submit">Tambah Akun</button>
+    </div>
+  </form>
+
+  <form method="post" action="{{ url_for('main.seed_accounts') }}" style="margin-top:12px;">
+    <button class="btn" type="submit">Isi Akun Standar (MBG)</button>
+  </form>
+
+  <hr style="margin:18px 0; border:none; border-top:1px solid #eee;" />
+
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; width:100%;">
+    <tr>
+      <th>Kode</th><th>Nama</th><th>Tipe</th>
+    </tr>
+    {% for a in accounts %}
+    <tr>
+      <td>{{ a.code }}</td>
+      <td>{{ a.name }}</td>
+      <td>{{ a.type }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

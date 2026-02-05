@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="row" style="justify-content: space-between; align-items:center;">
+    <div>
+      <h3 class="title">Edit Pelunasan Piutang</h3>
+      <p class="subtitle">Transaksi #{{ tx.id }}</p>
+    </div>
+    <a class="btn" href="{{ url_for('main.ar_settlement_home') }}">⬅️ Kembali</a>
+  </div>
+
+  <hr class="sep">
+
+  <form method="post" class="form-grid">
+    <div class="col-3">
+      <label class="subtitle">Tanggal</label>
+      <input class="input" type="date" name="date" value="{{ tx.date.strftime('%Y-%m-%d') }}" required>
+    </div>
+
+    <div class="col-4">
+      <label class="subtitle">Customer (opsional)</label>
+      <input class="input" type="text" name="customer_name" placeholder="Nama customer">
+      <p class="muted" style="margin-top:6px;">(Customer disimpan di memo tag [AR])</p>
+    </div>
+
+    <div class="col-5">
+      <label class="subtitle">Catatan (opsional)</label>
+      <input class="input" type="text" name="memo" value="{{ tx.memo or '' }}">
+    </div>
+
+    <div class="col-4">
+      <label class="subtitle">Kas/Bank (Debit)</label>
+      <select class="input" name="cash_account" required>
+        {% for a in cash_accounts %}
+          <option value="{{ a.code }}" {% if a.code == tx.cash_account_code %}selected{% endif %}>
+            {{ a.code }} - {{ a.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-4">
+      <label class="subtitle">Piutang (Kredit)</label>
+      <select class="input" name="ar_account" required>
+        {% for a in ar_accounts %}
+          <option value="{{ a.code }}" {% if a.code == tx.counter_account_code %}selected{% endif %}>
+            {{ a.code }} - {{ a.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-4">
+      <label class="subtitle">Nominal</label>
+      <input class="input" type="number" name="amount" step="1" min="1" value="{{ tx.amount or 0 }}" required>
+    </div>
+
+    <div class="col-12">
+      <button class="btn btn-primary" type="submit">Simpan Perubahan</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

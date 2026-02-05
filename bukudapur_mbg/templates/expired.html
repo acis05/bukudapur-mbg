@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>Trial / Akses Sudah Berakhir</h3>
+  <p class="muted">
+    {% if access %}
+      Kode <b>{{ access.code }}</b> sudah expired.
+    {% else %}
+      Akses sudah expired atau tidak valid.
+    {% endif %}
+  </p>
+
+  <p>
+    Untuk lanjut, lakukan aktivasi (nanti kita buat menu admin sederhana untuk perpanjang 30 hari / 1 tahun).
+  </p>
+
+  <div style="margin-top:12px;">
+    <a class="btn btn-primary" href="{{ url_for('main.enter_code') }}">Kembali</a>
+  </div>
+</div>
+{% endblock %}

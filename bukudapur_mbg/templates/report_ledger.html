@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3 class="title">Buku Besar</h3>
+
+<form method="get" class="row" style="gap:10px; align-items:end; margin:10px 0; flex-wrap:wrap;">
+  <div>
+    <label class="subtitle">Akun</label>
+    <select name="account" class="input">
+      <option value="">-- pilih akun --</option>
+      {% for a in accounts %}
+        <option value="{{ a.code }}" {% if selected_code == a.code %}selected{% endif %}>
+          {{ a.code }} - {{ a.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="subtitle">Dari Tanggal</label>
+    <input type="date" name="from" value="{{ dfrom }}" class="input">
+  </div>
+
+  <div>
+    <label class="subtitle">Sampai Tanggal</label>
+    <input type="date" name="to" value="{{ dto }}" class="input">
+  </div>
+
+  <button class="btn btn-primary" type="submit">Terapkan</button>
+  <a class="btn" href="{{ url_for('main.report_ledger') }}">Reset</a>
+</form>
+
+<hr class="sep">
+
+  
+  {% if selected_code %}
+  <hr class="sep">
+  <table>
+    <tr><th>Akun</th><th>Debit</th><th>Kredit</th></tr>
+    {% for l in lines %}
+    <tr>
+      <td>{{ l.account_name }}</td>
+      <td>{{ "{:,.0f}".format(l.debit) if l.debit else "" }}</td>
+      <td>{{ "{:,.0f}".format(l.credit) if l.credit else "" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+    {% if selected_code %}
+    <a class="btn btn-success"
+   href="{{ url_for('main.export_ledger_xlsx', account=selected_code, from=from_date, to=to_date) }}">
+  Export Excel
+</a>
+
+<a class="btn btn-success"
+   href="{{ url_for('main.export_ledger_all_xlsx', from=from_date, to=to_date) }}">
+  Export Excel Semua Akun
+</a>
+
+    {% endif %}
+
+  <p><b>Saldo:</b> {{ "{:,.0f}".format(balance) }}</p>
+  {% endif %}
+</div>
+{% endblock %}
