@@ -2852,7 +2852,6 @@ def report_profit_loss():
         dto=dto.strftime("%Y-%m-%d"),
     )
 
-
 # ============================================================
 # REPORT: Neraca (filter tanggal + laba tahun berjalan) — scoped
 # ============================================================
@@ -2877,69 +2876,105 @@ def report_balance_sheet():
                 JournalEntry.date < to_dt_excl,
             )
         )
-        debit = q.with_entities(db.func.coalesce(db.func.sum(JournalLine.debit), 0.0)).scalar() or 0.0
-        credit = q.with_entities(db.func.coalesce(db.func.sum(JournalLine.credit), 0.0)).scalar() or 0.0
+        debit = (
+            q.with_entities(db.func.coalesce(db.func.sum(JournalLine.debit), 0.0)).scalar()
+            or 0.0
+        )
+        credit = (
+            q.with_entities(db.func.coalesce(db.func.sum(JournalLine.credit), 0.0)).scalar()
+            or 0.0
+        )
         return float(debit) - float(credit)
 
-    assets = Account.query.filter_by(access_code_id=acc.id).filter(
-        Account.type.in_([
-            "Kas & Bank",
-            "Akun Piutang",
-            "Aktiva Lancar Lain",
-            "Persediaan",
-            "Aktiva Tetap",
-            "Akum. Peny.",
-        ])
-    ).order_by(Account.code.asc()).all()
+    assets = (
+        Account.query.filter_by(access_code_id=acc.id)
+        .filter(
+            Account.type.in_(
+                [
+                    "Kas & Bank",
+                    "Akun Piutang",
+                    "Aktiva Lancar Lain",
+                    "Persediaan",
+                    "Aktiva Tetap",
+                    "Akum. Peny.",
+                ]
+            )
+        )
+        .order_by(Account.code.asc())
+        .all()
+    )
 
-    liabilities = Account.query.filter_by(access_code_id=acc.id).filter(
-        Account.type.in_(["Akun Hutang", "Hutang Lancar Lain", "Hutang Jk. Panjang"])
-    ).order_by(Account.code.asc()).all()
+    liabilities = (
+        Account.query.filter_by(access_code_id=acc.id)
+        .filter(Account.type.in_(["Akun Hutang", "Hutang Lancar Lain", "Hutang Jk. Panjang"]))
+        .order_by(Account.code.asc())
+        .all()
+    )
 
-    equities = Account.query.filter_by(access_code_id=acc.id).filter(
-        Account.type == "Ekuitas"
-    ).order_by(Account.code.asc()).all()
+    equities = (
+        Account.query.filter_by(access_code_id=acc.id)
+        .filter(Account.type == "Ekuitas")
+        .order_by(Account.code.asc())
+        .all()
+    )
 
-    asset_data, liab_data, eq_data = [], [], []
-    total_assets = total_liab = total_eq = 0.0
+    asset_data: list[tuple[Account, float]] = []
+    liab_data: list[tuple[Account, float]] = []
+    eq_data: list[tuple[object, float]] = []
 
+    total_assets = 0.0
+    total_liab = 0.0
+    total_eq = 0.0
+
+    # ASET: normal debit (tampilkan apa adanya)
     for a in assets:
         amt = float(bal_upto(a.code))
         if amt != 0:
             asset_data.append((a, amt))
             total_assets += amt
 
+    # LIABILITAS: normal kredit (balance biasanya negatif) -> tampilkan positif
     for a in liabilities:
         amt = -float(bal_upto(a.code))
         if amt != 0:
             liab_data.append((a, amt))
             total_liab += amt
 
+    # EKUITAS: normal kredit -> tampilkan positif
     for a in equities:
         amt = -float(bal_upto(a.code))
         if amt != 0:
             eq_data.append((a, amt))
             total_eq += amt
 
-    # NET PROFIT sampai as_of (scoped)
+    # ===== NET PROFIT sampai as_of (scoped)
     rev_accounts = Account.query.filter_by(access_code_id=acc.id, type="Pendapatan").all()
     rev_other_accounts = Account.query.filter_by(access_code_id=acc.id, type="Pendapatan Lain").all()
     hpp_accounts = Account.query.filter_by(access_code_id=acc.id, type="HPP").all()
     exp_accounts = Account.query.filter_by(access_code_id=acc.id, type="Beban").all()
     exp_other_accounts = Account.query.filter_by(access_code_id=acc.id, type="Beban Lain").all()
 
-    sum_rev = sum(float(bal_upto(a.code)) for a in rev_accounts
+    # Catatan:
+    # - Pendapatan normal kredit => bal_upto biasanya negatif
+    # - Beban/HPP normal debit => bal_upto biasanya positif
     sum_rev = sum(float(bal_upto(a.code)) for a in rev_accounts)
     sum_rev_other = sum(float(bal_upto(a.code)) for a in rev_other_accounts)
     sum_hpp = sum(float(bal_upto(a.code)) for a in hpp_accounts)
     sum_exp = sum(float(bal_upto(a.code)) for a in exp_accounts)
     sum_exp_other = sum(float(bal_upto(a.code)) for a in exp_other_accounts)
 
-    # pendapatan = kredit → negatif, jadi dibalik
+    # pendapatan = kredit (negatif) -> dibalik jadi positif
     net_profit = (-sum_rev - sum_rev_other) - (sum_hpp + sum_exp + sum_exp_other)
 
-    eq_data.append(("Laba (Rugi) Berjalan", net_profit))
-    total_eq += net_profit
+    if net_profit != 0:
+        # dummy object biar template yang expect .code/.name tetap aman
+        tmp = type("Tmp", (), {})()
+        tmp.code = "99999"
+        tmp.name = "Laba (Rugi) Sampai Tanggal Ini"
+        tmp.type = "Ekuitas"
+
+        eq_data.append((tmp, float(net_profit)))
+        total_eq += float(net_profit)
 
     return render_template(
         "report_balance_sheet.html",
@@ -2975,10 +3010,12 @@ def export_profit_loss_pdf():
     )
 
     y = 740
+
+    # Pendapatan
     y = section_title(c, "Pendapatan", y)
-    total_rev = 0
-    for a in Account.query.filter_by(access_code_id=acc.id, type="Pendapatan"):
-        amt = -_account_balance_range(a.code, dfrom, dto)
+    total_rev = 0.0
+    for a in Account.query.filter_by(access_code_id=acc.id, type="Pendapatan").order_by(Account.code.asc()).all():
+        amt = -float(_account_balance_range(a.code, dfrom, dto))
         if amt != 0:
             table_2col(c, a.name, fmt_idr(amt), y)
             y -= 16
@@ -2988,10 +3025,11 @@ def export_profit_loss_pdf():
     table_2col(c, "Total Pendapatan", fmt_idr(total_rev), y, bold=True)
     y -= 24
 
+    # HPP
     y = section_title(c, "HPP", y)
-    total_hpp = 0
-    for a in Account.query.filter_by(access_code_id=acc.id, type="HPP"):
-        amt = _account_balance_range(a.code, dfrom, dto)
+    total_hpp = 0.0
+    for a in Account.query.filter_by(access_code_id=acc.id, type="HPP").order_by(Account.code.asc()).all():
+        amt = float(_account_balance_range(a.code, dfrom, dto))
         if amt != 0:
             table_2col(c, a.name, fmt_idr(amt), y)
             y -= 16
@@ -3005,10 +3043,11 @@ def export_profit_loss_pdf():
     table_2col(c, "LABA KOTOR", fmt_idr(laba_kotor), y, bold=True)
     y -= 32
 
+    # Beban
     y = section_title(c, "Beban Operasional", y)
-    total_exp = 0
-    for a in Account.query.filter_by(access_code_id=acc.id, type="Beban"):
-        amt = _account_balance_range(a.code, dfrom, dto)
+    total_exp = 0.0
+    for a in Account.query.filter_by(access_code_id=acc.id, type="Beban").order_by(Account.code.asc()).all():
+        amt = float(_account_balance_range(a.code, dfrom, dto))
         if amt != 0:
             table_2col(c, a.name, fmt_idr(amt), y)
             y -= 16
@@ -3033,7 +3072,6 @@ def export_profit_loss_pdf():
         download_name="laba_rugi.pdf",
         mimetype="application/pdf",
     )
-
 
 # ============================================================
 # ADMIN AUDIT: jurnal tidak balance
