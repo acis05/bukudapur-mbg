@@ -855,69 +855,11 @@ def logout():
 
 
 # ============================================================
-# Master Data + Transaksi (MULTI-TENANT by access_code_id)
+# PART 2/4 — MASTER DATA (scoped per access_code_id)
 # ============================================================
 
-from __future__ import annotations
-
-from datetime import datetime, timedelta
-from io import BytesIO
-import tempfile
-
-from flask import (
-    current_app,
-    flash,
-    redirect,
-    render_template,
-    request,
-    send_file,
-    session,
-    url_for,
-)
-
-from sqlalchemy import func
-
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
-
-from . import db
-from .models import (
-    AccessCode,
-    Account,
-    Supplier,
-    Item,
-    JournalEntry,
-    JournalLine,
-    CashTransaction,
-    Purchase,
-    PurchaseItem,
-    APayment,
-    SalesInvoice,
-    SalesInvoiceLine,
-    StockUsage,
-    ARPayment,
-)
-
-# ------------------------------------------------------------
-# NOTE:
-# Asumsi kamu sudah punya helper ini di file yang sama:
-# - _require_access()
-# - _require_admin()
-# - _parse_date(), _parse_ymd()
-# - _get_date_range_from_request(), _get_date_range_args()
-# - _create_journal_for_cash(), _create_journal_for_purchase()
-# - _create_journal_for_ap_payment(), _create_journal_for_stock_usage()
-# - _create_journal_for_invoice(), _create_journal_for_ar_payment()
-# - _account_balance(), _account_balance_range()
-# - _jl_entry_fk(), _jl_base_query()
-# - fmt_idr(), pdf_doc(), header_block(), section_title(), subsection_title()
-# - table_2col(), table_3col(), footer_canvas()
-# ------------------------------------------------------------
-
-
 # ============================================================
-# Master Data
+# Master Data Home
 # ============================================================
 @bp.get("/master")
 def master_home():
@@ -927,6 +869,9 @@ def master_home():
     return render_template("master_home.html")
 
 
+# ============================================================
+# Master: Accounts (COA)
+# ============================================================
 @bp.route("/master/accounts", methods=["GET", "POST"])
 def master_accounts():
     acc = _require_access()
@@ -942,15 +887,16 @@ def master_accounts():
             flash("Kode, Nama, dan Tipe akun wajib diisi.", "error")
             return redirect(url_for("main.master_accounts"))
 
-        # UNIQUE harusnya per access_code_id (bukan global),
-        # jadi ceknya wajib ikut tenant.
+        # ✅ unique per dapur (access_code_id)
         exists = Account.query.filter_by(access_code_id=acc.id, code=code).first()
         if exists:
-            flash("Kode akun sudah ada.", "error")
+            flash("Kode akun sudah ada di dapur ini.", "error")
             return redirect(url_for("main.master_accounts"))
 
-        db.session.add(Account(access_code_id=acc.id, code=code, name=name, type=atype))
+        obj = Account(access_code_id=acc.id, code=code, name=name, type=atype)
+        db.session.add(obj)
         db.session.commit()
+
         flash("Akun berhasil ditambahkan.", "success")
         return redirect(url_for("main.master_accounts"))
 
@@ -1007,10 +953,14 @@ def seed_accounts():
     skipped = 0
 
     for code, name, atype in standard_accounts:
-        if Account.query.filter_by(access_code_id=acc.id, code=code).first():
+        exists = Account.query.filter_by(access_code_id=acc.id, code=code).first()
+        if exists:
             skipped += 1
             continue
-        db.session.add(Account(access_code_id=acc.id, code=code, name=name, type=atype))
+
+        db.session.add(
+            Account(access_code_id=acc.id, code=code, name=name, type=atype)
+        )
         inserted += 1
 
     db.session.commit()
@@ -1018,6 +968,9 @@ def seed_accounts():
     return redirect(url_for("main.master_accounts"))
 
 
+# ============================================================
+# Master: Suppliers
+# ============================================================
 @bp.route("/master/suppliers", methods=["GET", "POST"])
 def master_suppliers():
     acc = _require_access()
@@ -1033,15 +986,15 @@ def master_suppliers():
             flash("Nama supplier wajib diisi.", "error")
             return redirect(url_for("main.master_suppliers"))
 
-        db.session.add(
-            Supplier(
-                access_code_id=acc.id,
-                name=name,
-                phone=phone or None,
-                address=address or None,
-            )
+        obj = Supplier(
+            access_code_id=acc.id,
+            name=name,
+            phone=phone or None,
+            address=address or None,
         )
+        db.session.add(obj)
         db.session.commit()
+
         flash("Supplier berhasil ditambahkan.", "success")
         return redirect(url_for("main.master_suppliers"))
 
@@ -1053,6 +1006,9 @@ def master_suppliers():
     return render_template("master_suppliers.html", suppliers=suppliers)
 
 
+# ============================================================
+# Master: Items
+# ============================================================
 @bp.route("/master/items", methods=["GET", "POST"])
 def master_items():
     acc = _require_access()
@@ -1071,20 +1027,22 @@ def master_items():
 
         try:
             min_stock_val = float(min_stock)
+            if min_stock_val < 0:
+                raise ValueError()
         except ValueError:
-            flash("Minimal stok harus angka.", "error")
+            flash("Minimal stok harus angka >= 0.", "error")
             return redirect(url_for("main.master_items"))
 
-        db.session.add(
-            Item(
-                access_code_id=acc.id,
-                name=name,
-                category=category or None,
-                unit=unit,
-                min_stock=min_stock_val,
-            )
+        obj = Item(
+            access_code_id=acc.id,
+            name=name,
+            category=category or None,
+            unit=unit,
+            min_stock=min_stock_val,
         )
+        db.session.add(obj)
         db.session.commit()
+
         flash("Bahan berhasil ditambahkan.", "success")
         return redirect(url_for("main.master_items"))
 
@@ -1095,6 +1053,17 @@ def master_items():
     )
     return render_template("master_items.html", items=items)
 
+# ============================================================
+# PART 3/4 — TRANSAKSI (scoped per access_code_id)
+#   - Cash
+#   - Journals list/detail
+#   - Purchase + helpers edit/delete
+#   - AP Payment + edit/delete
+#   - Sales (simple tag [SALE]) + edit/delete
+#   - AR Payments (invoice) + (opsional) AR Settlement via CashTransaction memo [AR]
+#   - Expenses + edit/delete
+#   - Stock Usage + edit/delete
+# ============================================================
 
 # ============================================================
 # Kas
@@ -1206,7 +1175,7 @@ def cash_edit(tx_id: int):
             flash("Akun tidak valid.", "error")
             return redirect(url_for("main.cash_edit", tx_id=tx_id))
 
-        # 1) hapus JournalEntry lama (kalau ada) - Wajib tenant
+        # 1) hapus JournalEntry lama (kalau ada)
         if getattr(tx, "journal_entry_id", None):
             old_entry = JournalEntry.query.filter_by(id=tx.journal_entry_id, access_code_id=acc.id).first()
             if old_entry:
@@ -1245,7 +1214,7 @@ def cash_delete(tx_id: int):
 
     tx = CashTransaction.query.filter_by(id=tx_id, access_code_id=acc.id).first_or_404()
 
-    # hapus journal entry terkait (tenant)
+    # hapus journal entry terkait
     if getattr(tx, "journal_entry_id", None):
         entry = JournalEntry.query.filter_by(id=tx.journal_entry_id, access_code_id=acc.id).first()
         if entry:
@@ -1258,7 +1227,7 @@ def cash_delete(tx_id: int):
 
 
 # ============================================================
-# Jurnal (filter tanggal)
+# Jurnal (dengan filter tanggal) — scoped
 # ============================================================
 @bp.get("/journals")
 def journals_list():
@@ -1270,7 +1239,8 @@ def journals_list():
 
     entries = (
         JournalEntry.query.filter_by(access_code_id=acc.id)
-        .filter(JournalEntry.date >= dfrom, JournalEntry.date <= dto)
+        .filter(JournalEntry.date >= datetime.combine(dfrom, datetime.min.time()))
+        .filter(JournalEntry.date <= datetime.combine(dto, datetime.max.time()))
         .order_by(JournalEntry.date.desc(), JournalEntry.id.desc())
         .limit(200)
         .all()
@@ -1294,7 +1264,7 @@ def journals_detail(entry_id: int):
 
 
 # ============================================================
-# Purchase (hutang)
+# Purchase (hutang) — scoped
 # ============================================================
 @bp.route("/purchase", methods=["GET", "POST"])
 def purchase_home():
@@ -1314,21 +1284,21 @@ def purchase_home():
     )
 
     if request.method == "POST":
-        date_str = request.form.get("date")
-        supplier_id = request.form.get("supplier_id")
-        memo = request.form.get("memo")
+        date_str = (request.form.get("date") or "").strip()
+        supplier_id = (request.form.get("supplier_id") or "").strip()
+        memo = (request.form.get("memo") or "").strip()
 
-        item_id = request.form.get("item_id")
-        qty = request.form.get("qty")
-        price = request.form.get("price")
+        item_id = (request.form.get("item_id") or "").strip()
+        qty_str = (request.form.get("qty") or "").strip()
+        price_str = (request.form.get("price") or "").strip()
 
-        if not date_str or not item_id or not qty or not price:
+        if not date_str or not item_id or not qty_str or not price_str:
             flash("Tanggal, bahan, qty, dan harga wajib diisi.", "error")
             return redirect(url_for("main.purchase_home"))
 
         try:
-            qty = float(qty)
-            price = float(price)
+            qty = float(qty_str)
+            price = float(price_str)
             if qty <= 0 or price <= 0:
                 raise ValueError()
         except ValueError:
@@ -1369,7 +1339,7 @@ def purchase_home():
         )
         db.session.add(pitem)
 
-        # update stok & avg cost
+        # update stok & avg cost (moving average)
         total_cost_existing = float(item.stock_qty or 0) * float(item.avg_cost or 0)
         total_cost_new = qty * price
         new_qty = float(item.stock_qty or 0) + qty
@@ -1394,10 +1364,9 @@ def purchase_home():
 
 
 # ============================================================
-# PURCHASE: Helpers untuk reverse stok + rebuild jurnal
+# PURCHASE: Helpers reverse/apply stok + rebuild jurnal (scoped)
 # ============================================================
 def _reverse_purchase_stock(acc: AccessCode, pitem: PurchaseItem):
-    """Reverse dampak pembelian lama, terkunci tenant."""
     item = Item.query.filter_by(id=pitem.item_id, access_code_id=acc.id).first()
     if not item:
         return
@@ -1444,23 +1413,23 @@ def _apply_purchase_stock(item: Item, qty: float, price: float):
     item.avg_cost = (total_cost_existing + total_cost_new) / new_qty if new_qty else 0.0
 
 
-def _delete_journal_entry(acc: AccessCode, entry_id: int | None):
-    """Hapus journal entry + lines, terkunci tenant."""
+def _delete_journal_entry_scoped(acc: AccessCode, entry_id: int | None):
     if not entry_id:
         return
+    # hapus lines dulu (scoped)
     JournalLine.query.filter_by(access_code_id=acc.id, entry_id=entry_id).delete()
     JournalEntry.query.filter_by(access_code_id=acc.id, id=entry_id).delete()
 
 
 def _rebuild_journal_for_purchase(acc: AccessCode, purchase: Purchase):
-    _delete_journal_entry(acc, getattr(purchase, "journal_entry_id", None))
+    _delete_journal_entry_scoped(acc, getattr(purchase, "journal_entry_id", None))
     db.session.flush()
     entry = _create_journal_for_purchase(purchase)
     purchase.journal_entry_id = entry.id
 
 
 # ============================================================
-# PURCHASE: Edit / Delete
+# PURCHASE: Edit / Delete (scoped)
 # ============================================================
 @bp.route("/purchase/<int:purchase_id>/edit", methods=["GET", "POST"])
 def purchase_edit(purchase_id: int):
@@ -1470,7 +1439,10 @@ def purchase_edit(purchase_id: int):
 
     purchase = Purchase.query.filter_by(id=purchase_id, access_code_id=acc.id).first_or_404()
 
-    pitem = PurchaseItem.query.filter_by(purchase_id=purchase.id, access_code_id=acc.id).first()
+    pitem = PurchaseItem.query.filter_by(
+        access_code_id=acc.id,
+        purchase_id=purchase.id,
+    ).first()
     if not pitem:
         flash("Item pembelian tidak ditemukan.", "error")
         return redirect(url_for("main.purchase_home"))
@@ -1505,10 +1477,10 @@ def purchase_edit(purchase_id: int):
             flash("Bahan tidak valid.", "error")
             return redirect(url_for("main.purchase_edit", purchase_id=purchase.id))
 
-        # reverse stok dari pembelian lama (tenant)
+        # STEP 1: reverse stok dari pembelian lama
         _reverse_purchase_stock(acc, pitem)
 
-        # update purchase
+        # STEP 2: update purchase + pitem
         purchase.date = _parse_date(date_str)
         purchase.memo = memo or None
 
@@ -1524,19 +1496,17 @@ def purchase_edit(purchase_id: int):
             purchase.supplier_id = None
             purchase.supplier_name = None
 
-        # update pitem
         pitem.item_id = new_item.id
         pitem.item_name = new_item.name
         pitem.qty = qty
         pitem.price = price
         pitem.subtotal = qty * price
-
         purchase.total_amount = pitem.subtotal
 
-        # apply stok baru
+        # STEP 3: apply stok baru
         _apply_purchase_stock(new_item, qty, price)
 
-        # rebuild jurnal
+        # STEP 4: rebuild jurnal pembelian
         _rebuild_journal_for_purchase(acc, purchase)
 
         db.session.commit()
@@ -1559,12 +1529,12 @@ def purchase_delete(purchase_id: int):
         return redirect(url_for("main.enter_code"))
 
     purchase = Purchase.query.filter_by(id=purchase_id, access_code_id=acc.id).first_or_404()
-    pitem = PurchaseItem.query.filter_by(purchase_id=purchase.id, access_code_id=acc.id).first()
+    pitem = PurchaseItem.query.filter_by(access_code_id=acc.id, purchase_id=purchase.id).first()
 
     if pitem:
         _reverse_purchase_stock(acc, pitem)
 
-    _delete_journal_entry(acc, getattr(purchase, "journal_entry_id", None))
+    _delete_journal_entry_scoped(acc, getattr(purchase, "journal_entry_id", None))
 
     if pitem:
         db.session.delete(pitem)
@@ -1577,7 +1547,7 @@ def purchase_delete(purchase_id: int):
 
 
 # ============================================================
-# AP Payment
+# AP Payment (scoped)
 # ============================================================
 @bp.route("/ap-payment", methods=["GET", "POST"])
 def ap_payment_home():
@@ -1585,7 +1555,11 @@ def ap_payment_home():
     if not acc:
         return redirect(url_for("main.enter_code"))
 
-    purchases = Purchase.query.filter_by(access_code_id=acc.id).order_by(Purchase.date.desc()).all()
+    purchases = (
+        Purchase.query.filter_by(access_code_id=acc.id)
+        .order_by(Purchase.date.desc(), Purchase.id.desc())
+        .all()
+    )
     cash_accounts = (
         Account.query.filter_by(access_code_id=acc.id)
         .filter(Account.type == "Kas & Bank")
@@ -1594,11 +1568,11 @@ def ap_payment_home():
     )
 
     if request.method == "POST":
-        date_str = request.form.get("date")
-        purchase_id = request.form.get("purchase_id")
-        cash_code = request.form.get("cash_account")
-        amount_str = request.form.get("amount")
-        memo = request.form.get("memo")
+        date_str = (request.form.get("date") or "").strip()
+        purchase_id = (request.form.get("purchase_id") or "").strip()
+        cash_code = (request.form.get("cash_account") or "").strip()
+        amount_str = (request.form.get("amount") or "").strip()
+        memo = (request.form.get("memo") or "").strip()
 
         if not date_str or not cash_code or not amount_str:
             flash("Tanggal, akun kas, dan nominal wajib diisi.", "error")
@@ -1700,7 +1674,7 @@ def ap_payment_edit(payment_id: int):
                 old_purchase.is_paid = False
 
         # hapus jurnal lama
-        _delete_journal_entry(acc, payment.journal_entry_id)
+        _delete_journal_entry_scoped(acc, payment.journal_entry_id)
         db.session.flush()
 
         # update payment
@@ -1750,12 +1724,13 @@ def ap_payment_delete(payment_id: int):
 
     payment = APayment.query.filter_by(id=payment_id, access_code_id=acc.id).first_or_404()
 
+    # rollback status hutang
     if payment.purchase_id:
         purchase = Purchase.query.filter_by(id=payment.purchase_id, access_code_id=acc.id).first()
         if purchase:
             purchase.is_paid = False
 
-    _delete_journal_entry(acc, payment.journal_entry_id)
+    _delete_journal_entry_scoped(acc, payment.journal_entry_id)
 
     db.session.delete(payment)
     db.session.commit()
@@ -1765,7 +1740,7 @@ def ap_payment_delete(payment_id: int):
 
 
 # ============================================================
-# PENJUALAN (SIMPLE) - CashTransaction memo [SALE]
+# Sales (SIMPLE) — pakai CashTransaction memo [SALE] (scoped)
 # ============================================================
 def _sale_memo(customer: str | None, note: str | None) -> str:
     customer = (customer or "").strip()
@@ -1847,10 +1822,8 @@ def sales_home():
 
     sales = (
         CashTransaction.query.filter_by(access_code_id=acc.id)
-        .filter(
-            CashTransaction.direction == "in",
-            CashTransaction.memo.like("[SALE]%"),
-        )
+        .filter(CashTransaction.direction == "in")
+        .filter(CashTransaction.memo.like("[SALE]%"))
         .order_by(CashTransaction.date.desc(), CashTransaction.id.desc())
         .limit(100)
         .all()
@@ -1916,14 +1889,14 @@ def sales_edit(tx_id: int):
             flash("Akun tidak valid.", "error")
             return redirect(url_for("main.sales_edit", tx_id=tx.id))
 
-        # hapus jurnal lama (tenant)
-        old_entry_id = tx.journal_entry_id
-        if old_entry_id:
-            old_entry = JournalEntry.query.filter_by(id=old_entry_id, access_code_id=acc.id).first()
+        # hapus jurnal lama
+        if tx.journal_entry_id:
+            old_entry = JournalEntry.query.filter_by(id=tx.journal_entry_id, access_code_id=acc.id).first()
             if old_entry:
                 db.session.delete(old_entry)
                 db.session.flush()
 
+        # update tx
         tx.date = _parse_date(date_str)
         tx.cash_account_code = debit_acc.code
         tx.cash_account_name = debit_acc.name
@@ -1976,7 +1949,7 @@ def sales_delete(tx_id: int):
 
 
 # ============================================================
-# AR Payments (Invoice-based)
+# AR Payments (Invoice) — scoped (route kamu /ar/payments)
 # ============================================================
 @bp.route("/ar/payments", methods=["GET", "POST"])
 def ar_payment_home():
@@ -1993,7 +1966,7 @@ def ar_payment_home():
     open_invoices = (
         SalesInvoice.query.filter_by(access_code_id=acc.id)
         .filter(SalesInvoice.status != "paid")
-        .order_by(SalesInvoice.date.desc())
+        .order_by(SalesInvoice.date.desc(), SalesInvoice.id.desc())
         .all()
     )
 
@@ -2048,7 +2021,11 @@ def ar_payment_home():
         pay.journal_entry_id = entry.id
 
         inv.paid_amount = float(inv.paid_amount or 0) + amt
-        inv.status = "paid" if inv.paid_amount >= float(inv.total_amount or 0) else "partial"
+        if inv.paid_amount >= float(inv.total_amount or 0):
+            inv.status = "paid"
+            inv.paid_amount = float(inv.total_amount or 0)
+        else:
+            inv.status = "partial"
 
         db.session.commit()
         flash("Pembayaran piutang tersimpan & jurnal otomatis dibuat.", "success")
@@ -2069,7 +2046,7 @@ def ar_payment_home():
 
 
 # ============================================================
-# Expenses (kas keluar)
+# Expenses (kas keluar ke akun beban) — scoped
 # ============================================================
 @bp.route("/expenses", methods=["GET", "POST"])
 def expenses_home():
@@ -2137,8 +2114,7 @@ def expenses_home():
         return redirect(url_for("main.expenses_home"))
 
     txs = (
-        CashTransaction.query.filter_by(access_code_id=acc.id)
-        .filter(CashTransaction.direction == "out")
+        CashTransaction.query.filter_by(access_code_id=acc.id, direction="out")
         .order_by(CashTransaction.date.desc(), CashTransaction.id.desc())
         .limit(50)
         .all()
@@ -2195,6 +2171,7 @@ def expense_edit(tx_id: int):
             flash("Akun tidak valid.", "error")
             return redirect(url_for("main.expense_edit", tx_id=tx.id))
 
+        # update transaksi
         tx.date = _parse_date(date_str)
         tx.cash_account_code = cash_acc.code
         tx.cash_account_name = cash_acc.name
@@ -2203,6 +2180,7 @@ def expense_edit(tx_id: int):
         tx.amount = amount
         tx.memo = memo or None
 
+        # rebuild jurnal
         if getattr(tx, "journal_entry_id", None):
             old = JournalEntry.query.filter_by(id=tx.journal_entry_id, access_code_id=acc.id).first()
             if old:
@@ -2247,7 +2225,7 @@ def expense_delete(tx_id: int):
 
 
 # ============================================================
-# Stock Usage
+# Stock Usage — scoped
 # ============================================================
 @bp.route("/stock-usage", methods=["GET", "POST"])
 def stock_usage_home():
@@ -2377,13 +2355,13 @@ def stock_usage_edit(usage_id: int):
             flash("Akun HPP tidak valid.", "error")
             return redirect(url_for("main.stock_usage_edit", usage_id=usage.id))
 
-        # balikin stok dari pemakaian lama (tenant)
+        # 1) balikin stok dari pemakaian lama
         old_item = Item.query.filter_by(id=usage.item_id, access_code_id=acc.id).first()
         old_qty = float(usage.qty or 0)
         if old_item:
             old_item.stock_qty = float(old_item.stock_qty or 0) + old_qty
 
-        # cek stok cukup untuk pemakaian baru
+        # 2) cek stok cukup untuk pemakaian baru (setelah rollback)
         if float(new_item.stock_qty or 0) < new_qty:
             flash(
                 f"Stok tidak cukup setelah penyesuaian. Stok tersedia: {float(new_item.stock_qty or 0):g} {new_item.unit}.",
@@ -2392,9 +2370,9 @@ def stock_usage_edit(usage_id: int):
             db.session.rollback()
             return redirect(url_for("main.stock_usage_edit", usage_id=usage.id))
 
+        # 3) apply pemakaian baru
         unit_cost = float(new_item.avg_cost or 0)
         total_cost = new_qty * unit_cost
-
         new_item.stock_qty = float(new_item.stock_qty or 0) - new_qty
 
         usage.date = _parse_date(date_str)
@@ -2407,6 +2385,7 @@ def stock_usage_edit(usage_id: int):
         usage.hpp_account_name = hpp_acc.name
         usage.memo = memo or None
 
+        # 4) rebuild jurnal
         if getattr(usage, "journal_entry_id", None):
             old_entry = JournalEntry.query.filter_by(id=usage.journal_entry_id, access_code_id=acc.id).first()
             if old_entry:
@@ -2436,10 +2415,12 @@ def stock_usage_delete(usage_id: int):
 
     usage = StockUsage.query.filter_by(id=usage_id, access_code_id=acc.id).first_or_404()
 
+    # balikin stok
     item = Item.query.filter_by(id=usage.item_id, access_code_id=acc.id).first()
     if item:
         item.stock_qty = float(item.stock_qty or 0) + float(usage.qty or 0)
 
+    # hapus jurnal terkait
     if getattr(usage, "journal_entry_id", None):
         old_entry = JournalEntry.query.filter_by(id=usage.journal_entry_id, access_code_id=acc.id).first()
         if old_entry:
@@ -2450,9 +2431,22 @@ def stock_usage_delete(usage_id: int):
     flash("Pemakaian stok berhasil dihapus (stok & jurnal dikembalikan).", "success")
     return redirect(url_for("main.stock_usage_home"))
 
+# ============================================================
+# PART 4/4 — REPORTS + EXPORTS + AUDIT + REBUILD HELPERS (scoped)
+#   - Report Ledger (web)
+#   - Excel helpers + export ledger.xlsx + ledger-all.xlsx
+#   - Report Profit/Loss (web) + export PDF
+#   - Report Balance Sheet (web) + export PDF
+#   - Export Sales Invoice PDF
+#   - Admin audit unbalanced
+#   - Rebuild helpers (inventory + paid flags + journals)
+#   - AR Payment edit/delete (yang versi bawah file kamu)
+# ============================================================
+
+from sqlalchemy import func, and_
 
 # ============================================================
-# REPORT: Buku Besar (filter tanggal)
+# REPORT: Buku Besar (filter tanggal) — scoped
 # ============================================================
 @bp.get("/reports/ledger")
 def report_ledger():
@@ -2460,7 +2454,11 @@ def report_ledger():
     if not acc:
         return redirect(url_for("main.enter_code"))
 
-    accounts = Account.query.filter_by(access_code_id=acc.id).order_by(Account.code.asc()).all()
+    accounts = (
+        Account.query.filter_by(access_code_id=acc.id)
+        .order_by(Account.code.asc())
+        .all()
+    )
     selected_code = (request.args.get("account") or "").strip()
 
     from_str = (request.args.get("from") or "").strip()
@@ -2473,21 +2471,16 @@ def report_ledger():
     balance = 0.0
 
     if selected_code:
-        fk = _jl_entry_fk()
-        q = (
-            JournalLine.query
-            .filter_by(access_code_id=acc.id)
-            .join(JournalEntry, fk == JournalEntry.id)
-            .filter(
-                JournalEntry.access_code_id == acc.id,
-                JournalLine.account_code == selected_code,
-            )
-        )
+        # pastikan akun ini milik acc
+        a = Account.query.filter_by(access_code_id=acc.id, code=selected_code).first()
+        if not a:
+            flash("Akun tidak ditemukan untuk dapur ini.", "error")
+            return redirect(url_for("main.report_ledger"))
 
-        if from_date:
-            q = q.filter(JournalEntry.date >= from_date)
-        if to_date:
-            q = q.filter(JournalEntry.date <= to_date)
+        q = _jl_base_query(from_date, (to_date + timedelta(days=1)) if to_date else None).filter(
+            JournalLine.access_code_id == acc.id,
+            JournalLine.account_code == selected_code,
+        )
 
         lines = q.order_by(JournalEntry.date.asc(), JournalLine.id.asc()).all()
         balance = sum((ln.debit or 0) - (ln.credit or 0) for ln in lines)
@@ -2547,20 +2540,23 @@ def _style_table_cells(ws, start_row, end_row, start_col, end_col):
 def _fmt_idr_excel(cell):
     cell.number_format = "#,##0"
 
-def _get_entry_date_and_memo(acc: AccessCode, line: JournalLine):
+def _get_entry_date_and_memo(line: JournalLine):
     je = None
     if hasattr(line, "entry") and line.entry is not None:
         je = line.entry
     else:
         if hasattr(line, "entry_id"):
-            je = JournalEntry.query.filter_by(id=line.entry_id, access_code_id=acc.id).first()
+            je = JournalEntry.query.get(line.entry_id)
+        elif hasattr(line, "journal_entry_id"):
+            je = JournalEntry.query.get(line.journal_entry_id)
     if not je:
         return None, "-"
     return je.date, (je.memo or "-")
 
 
 # =========================
-# EXPORT: Buku Besar ke Excel (Per Akun)
+# EXPORT: Buku Besar ke Excel (Per Akun) — scoped
+# URL: /export/ledger.xlsx?account=10011&from=2026-02-01&to=2026-02-02
 # =========================
 @bp.get("/export/ledger.xlsx")
 def export_ledger_xlsx():
@@ -2576,11 +2572,11 @@ def export_ledger_xlsx():
     from_dt, to_dt_excl, from_str, to_str = _get_date_range_args()
 
     account = Account.query.filter_by(access_code_id=acc.id, code=code).first()
-    acc_name = account.name if account else ""
+    if not account:
+        flash("Akun tidak ditemukan untuk dapur ini.", "error")
+        return redirect(url_for("main.report_ledger"))
 
-    # Pastikan _jl_base_query kamu juga join JournalEntry
     q = _jl_base_query(from_dt, to_dt_excl).filter(
-        JournalEntry.access_code_id == acc.id,
         JournalLine.access_code_id == acc.id,
         JournalLine.account_code == code,
     )
@@ -2593,7 +2589,7 @@ def export_ledger_xlsx():
 
     ws["A1"] = "Buku Besar"
     ws["A1"].font = Font(bold=True, size=14)
-    ws["A2"] = f"Akun: {code} - {acc_name}".strip(" -")
+    ws["A2"] = f"Akun: {code} - {account.name}".strip(" -")
     ws["A3"] = f"Dapur: {acc.dapur_name or 'Dapur MBG'}"
 
     periode = "Periode: "
@@ -2615,7 +2611,7 @@ def export_ledger_xlsx():
     saldo = 0.0
     r = start_row + 1
     for ln in lines:
-        dt, memo = _get_entry_date_and_memo(acc, ln)
+        dt, memo = _get_entry_date_and_memo(ln)
         debit = float(ln.debit or 0)
         credit = float(ln.credit or 0)
         saldo += (debit - credit)
@@ -2654,8 +2650,127 @@ def export_ledger_xlsx():
     )
 
 
+# =========================
+# EXPORT: Buku Besar ke Excel (Semua Akun, per sheet) — scoped
+# URL: /export/ledger-all.xlsx?from=2026-02-01&to=2026-02-02
+# =========================
+@bp.get("/export/ledger-all.xlsx")
+def export_ledger_all_xlsx():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+
+    from_dt, to_dt_excl, from_str, to_str = _get_date_range_args()
+
+    periode = "Periode: "
+    if from_str and to_str:
+        periode += f"{from_str} s/d {to_str}"
+    elif from_str and not to_str:
+        periode += f"mulai {from_str}"
+    elif (not from_str) and to_str:
+        periode += f"sampai {to_str}"
+    else:
+        periode += "Seluruh Periode"
+
+    accounts = Account.query.filter_by(access_code_id=acc.id).order_by(Account.code.asc()).all()
+
+    wb = Workbook()
+    ws_sum = wb.active
+    ws_sum.title = "Ringkasan"
+
+    ws_sum["A1"] = "Buku Besar - Semua Akun"
+    ws_sum["A1"].font = Font(bold=True, size=14)
+    ws_sum["A2"] = f"Dapur: {acc.dapur_name or 'Dapur MBG'}"
+    ws_sum["A3"] = periode
+
+    ws_sum.append([])
+    ws_sum.append(["Kode", "Nama Akun", "Saldo (Debit - Kredit)"])
+    header_row = ws_sum.max_row
+    _style_header_row(ws_sum, header_row)
+
+    ringkasan_start = ws_sum.max_row + 1
+    ringkasan_row = ringkasan_start
+
+    for a in accounts:
+        q = _jl_base_query(from_dt, to_dt_excl).filter(
+            JournalLine.access_code_id == acc.id,
+            JournalLine.account_code == a.code,
+        )
+        q = q.order_by(JournalEntry.date.asc(), JournalLine.id.asc())
+        lines = q.all()
+        if not lines:
+            continue
+
+        sheet_name = f"{a.code}"
+        if sheet_name in wb.sheetnames:
+            sheet_name = f"{a.code}_{(a.name or '')[:10]}"
+        ws = wb.create_sheet(title=sheet_name[:31])
+
+        ws["A1"] = "Buku Besar"
+        ws["A1"].font = Font(bold=True, size=14)
+        ws["A2"] = f"Akun: {a.code} - {a.name}"
+        ws["A3"] = f"Dapur: {acc.dapur_name or 'Dapur MBG'}"
+        ws["A4"] = periode
+
+        start_row = 6
+        ws.append([""] * 5)
+        ws.append(["Tanggal", "Keterangan", "Debit", "Kredit", "Saldo Berjalan"])
+        _style_header_row(ws, start_row)
+
+        saldo = 0.0
+        r = start_row + 1
+        for ln in lines:
+            dt, memo = _get_entry_date_and_memo(ln)
+            debit = float(ln.debit or 0)
+            credit = float(ln.credit or 0)
+            saldo += (debit - credit)
+
+            ws.cell(row=r, column=1, value=dt.date().isoformat() if dt else "-")
+            ws.cell(row=r, column=2, value=memo)
+            ws.cell(row=r, column=3, value=debit)
+            ws.cell(row=r, column=4, value=credit)
+            ws.cell(row=r, column=5, value=saldo)
+
+            _fmt_idr_excel(ws.cell(row=r, column=3))
+            _fmt_idr_excel(ws.cell(row=r, column=4))
+            _fmt_idr_excel(ws.cell(row=r, column=5))
+            r += 1
+
+        if r > start_row + 1:
+            _style_table_cells(ws, start_row + 1, r - 1, 1, 5)
+
+        ws.cell(row=r + 1, column=2, value="SALDO AKHIR").font = Font(bold=True)
+        ws.cell(row=r + 1, column=5, value=saldo).font = Font(bold=True)
+        _fmt_idr_excel(ws.cell(row=r + 1, column=5))
+
+        _autosize_columns(ws)
+
+        # ringkasan
+        ws_sum.cell(row=ringkasan_row, column=1, value=a.code)
+        ws_sum.cell(row=ringkasan_row, column=2, value=a.name)
+        ws_sum.cell(row=ringkasan_row, column=3, value=saldo)
+        _fmt_idr_excel(ws_sum.cell(row=ringkasan_row, column=3))
+        ringkasan_row += 1
+
+    if ringkasan_row > ringkasan_start:
+        _style_table_cells(ws_sum, ringkasan_start, ringkasan_row - 1, 1, 3)
+
+    _autosize_columns(ws_sum)
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name="buku_besar_semua_akun.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 # ============================================================
-# REPORT: Laba Rugi (filter tanggal, struktur standar)
+# REPORT: Laba Rugi (filter tanggal, struktur standar) — scoped
 # ============================================================
 @bp.get("/reports/profit-loss")
 def report_profit_loss():
@@ -2665,17 +2780,17 @@ def report_profit_loss():
 
     dfrom, dto = _get_date_range_from_request()
 
-    rev_main = Account.query.filter_by(access_code_id=acc.id).filter(Account.type == "Pendapatan").order_by(Account.code.asc()).all()
-    hpp_accounts = Account.query.filter_by(access_code_id=acc.id).filter(Account.type == "HPP").order_by(Account.code.asc()).all()
-    op_exp = Account.query.filter_by(access_code_id=acc.id).filter(Account.type == "Beban").order_by(Account.code.asc()).all()
-    rev_other = Account.query.filter_by(access_code_id=acc.id).filter(Account.type == "Pendapatan Lain").order_by(Account.code.asc()).all()
-    exp_other = Account.query.filter_by(access_code_id=acc.id).filter(Account.type == "Beban Lain").order_by(Account.code.asc()).all()
+    rev_main = Account.query.filter_by(access_code_id=acc.id, type="Pendapatan").order_by(Account.code.asc()).all()
+    hpp_accounts = Account.query.filter_by(access_code_id=acc.id, type="HPP").order_by(Account.code.asc()).all()
+    op_exp = Account.query.filter_by(access_code_id=acc.id, type="Beban").order_by(Account.code.asc()).all()
+    rev_other = Account.query.filter_by(access_code_id=acc.id, type="Pendapatan Lain").order_by(Account.code.asc()).all()
+    exp_other = Account.query.filter_by(access_code_id=acc.id, type="Beban Lain").order_by(Account.code.asc()).all()
 
     def amt_revenue(a):
-        return -_account_balance_range(acc, a.code, dfrom, dto)  # <-- saranku ubah helper supaya tenant-aware
+        return -_account_balance_range(a.code, dfrom, dto)
 
     def amt_expense(a):
-        return _account_balance_range(acc, a.code, dfrom, dto)
+        return _account_balance_range(a.code, dfrom, dto)
 
     rev_main_data, total_rev_main = [], 0.0
     for a in rev_main:
@@ -2739,66 +2854,260 @@ def report_profit_loss():
 
 
 # ============================================================
-# ADMIN: Audit unbalanced entries (opsional tenant filter)
+# REPORT: Neraca (filter tanggal + laba tahun berjalan) — scoped
+# ============================================================
+@bp.get("/reports/balance-sheet")
+def report_balance_sheet():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+
+    as_of_str = (request.args.get("as_of") or "").strip()
+    as_of_date = _parse_ymd(as_of_str) or datetime.utcnow().date()
+    to_dt_excl = datetime.combine(as_of_date + timedelta(days=1), datetime.min.time())
+
+    def bal_upto(code: str) -> float:
+        fk = _jl_entry_fk()
+        q = (
+            JournalLine.query.join(JournalEntry, fk == JournalEntry.id)
+            .filter(
+                JournalLine.access_code_id == acc.id,
+                JournalLine.account_code == code,
+                JournalEntry.access_code_id == acc.id,
+                JournalEntry.date < to_dt_excl,
+            )
+        )
+        debit = q.with_entities(db.func.coalesce(db.func.sum(JournalLine.debit), 0.0)).scalar() or 0.0
+        credit = q.with_entities(db.func.coalesce(db.func.sum(JournalLine.credit), 0.0)).scalar() or 0.0
+        return float(debit) - float(credit)
+
+    assets = Account.query.filter_by(access_code_id=acc.id).filter(
+        Account.type.in_([
+            "Kas & Bank",
+            "Akun Piutang",
+            "Aktiva Lancar Lain",
+            "Persediaan",
+            "Aktiva Tetap",
+            "Akum. Peny.",
+        ])
+    ).order_by(Account.code.asc()).all()
+
+    liabilities = Account.query.filter_by(access_code_id=acc.id).filter(
+        Account.type.in_(["Akun Hutang", "Hutang Lancar Lain", "Hutang Jk. Panjang"])
+    ).order_by(Account.code.asc()).all()
+
+    equities = Account.query.filter_by(access_code_id=acc.id).filter(
+        Account.type == "Ekuitas"
+    ).order_by(Account.code.asc()).all()
+
+    asset_data, liab_data, eq_data = [], [], []
+    total_assets = total_liab = total_eq = 0.0
+
+    for a in assets:
+        amt = float(bal_upto(a.code))
+        if amt != 0:
+            asset_data.append((a, amt))
+            total_assets += amt
+
+    for a in liabilities:
+        amt = -float(bal_upto(a.code))
+        if amt != 0:
+            liab_data.append((a, amt))
+            total_liab += amt
+
+    for a in equities:
+        amt = -float(bal_upto(a.code))
+        if amt != 0:
+            eq_data.append((a, amt))
+            total_eq += amt
+
+    # NET PROFIT sampai as_of (scoped)
+    rev_accounts = Account.query.filter_by(access_code_id=acc.id, type="Pendapatan").all()
+    rev_other_accounts = Account.query.filter_by(access_code_id=acc.id, type="Pendapatan Lain").all()
+    hpp_accounts = Account.query.filter_by(access_code_id=acc.id, type="HPP").all()
+    exp_accounts = Account.query.filter_by(access_code_id=acc.id, type="Beban").all()
+    exp_other_accounts = Account.query.filter_by(access_code_id=acc.id, type="Beban Lain").all()
+
+    sum_rev = sum(float(bal_upto(a.code)) for a in rev_accounts
+    sum_rev = sum(float(bal_upto(a.code)) for a in rev_accounts)
+    sum_rev_other = sum(float(bal_upto(a.code)) for a in rev_other_accounts)
+    sum_hpp = sum(float(bal_upto(a.code)) for a in hpp_accounts)
+    sum_exp = sum(float(bal_upto(a.code)) for a in exp_accounts)
+    sum_exp_other = sum(float(bal_upto(a.code)) for a in exp_other_accounts)
+
+    # pendapatan = kredit → negatif, jadi dibalik
+    net_profit = (-sum_rev - sum_rev_other) - (sum_hpp + sum_exp + sum_exp_other)
+
+    eq_data.append(("Laba (Rugi) Berjalan", net_profit))
+    total_eq += net_profit
+
+    return render_template(
+        "report_balance_sheet.html",
+        as_of=as_of_date.strftime("%Y-%m-%d"),
+        asset_data=asset_data,
+        liab_data=liab_data,
+        eq_data=eq_data,
+        total_assets=total_assets,
+        total_liab=total_liab,
+        total_eq=total_eq,
+    )
+
+
+# ============================================================
+# EXPORT PDF: Laba Rugi
+# ============================================================
+@bp.get("/reports/profit-loss.pdf")
+def export_profit_loss_pdf():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+
+    dfrom, dto = _get_date_range_from_request()
+
+    buf = BytesIO()
+    c, doc = pdf_doc(buf)
+
+    header_block(
+        c,
+        title="Laporan Laba Rugi",
+        subtitle=f"{dfrom.strftime('%d %b %Y')} s/d {dto.strftime('%d %b %Y')}",
+        right=f"Dapur: {acc.dapur_name or '-'}",
+    )
+
+    y = 740
+    y = section_title(c, "Pendapatan", y)
+    total_rev = 0
+    for a in Account.query.filter_by(access_code_id=acc.id, type="Pendapatan"):
+        amt = -_account_balance_range(a.code, dfrom, dto)
+        if amt != 0:
+            table_2col(c, a.name, fmt_idr(amt), y)
+            y -= 16
+            total_rev += amt
+
+    y -= 8
+    table_2col(c, "Total Pendapatan", fmt_idr(total_rev), y, bold=True)
+    y -= 24
+
+    y = section_title(c, "HPP", y)
+    total_hpp = 0
+    for a in Account.query.filter_by(access_code_id=acc.id, type="HPP"):
+        amt = _account_balance_range(a.code, dfrom, dto)
+        if amt != 0:
+            table_2col(c, a.name, fmt_idr(amt), y)
+            y -= 16
+            total_hpp += amt
+
+    y -= 8
+    table_2col(c, "Total HPP", fmt_idr(total_hpp), y, bold=True)
+    y -= 24
+
+    laba_kotor = total_rev - total_hpp
+    table_2col(c, "LABA KOTOR", fmt_idr(laba_kotor), y, bold=True)
+    y -= 32
+
+    y = section_title(c, "Beban Operasional", y)
+    total_exp = 0
+    for a in Account.query.filter_by(access_code_id=acc.id, type="Beban"):
+        amt = _account_balance_range(a.code, dfrom, dto)
+        if amt != 0:
+            table_2col(c, a.name, fmt_idr(amt), y)
+            y -= 16
+            total_exp += amt
+
+    y -= 8
+    table_2col(c, "Total Beban", fmt_idr(total_exp), y, bold=True)
+    y -= 24
+
+    laba_usaha = laba_kotor - total_exp
+    table_2col(c, "LABA USAHA", fmt_idr(laba_usaha), y, bold=True)
+    y -= 32
+
+    footer_canvas(c)
+    c.showPage()
+    c.save()
+
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name="laba_rugi.pdf",
+        mimetype="application/pdf",
+    )
+
+
+# ============================================================
+# ADMIN AUDIT: jurnal tidak balance
 # ============================================================
 @bp.get("/admin/audit/unbalanced")
-def audit_unbalanced_entries():
+def admin_audit_unbalanced():
     guard = _require_admin()
     if guard:
         return guard
 
-    # optional: ?access_code_id=123 untuk audit dapur tertentu
-    ac_id = (request.args.get("access_code_id") or "").strip()
-    tenant_id = int(ac_id) if ac_id.isdigit() else None
+    rows = []
+    entries = JournalEntry.query.order_by(JournalEntry.date.desc()).all()
+    for e in entries:
+        debit = sum(l.debit or 0 for l in e.lines)
+        credit = sum(l.credit or 0 for l in e.lines)
+        if round(debit - credit, 2) != 0:
+            rows.append((e, debit, credit))
 
-    to_str = (request.args.get("to") or "").strip()
-    if to_str:
-        dto = _parse_ymd(to_str)
-        if dto is None:
-            flash("Format tanggal tidak valid.", "error")
-            return redirect(url_for("main.dashboard"))
-    else:
-        dto = datetime.utcnow().date()
-
-    to_dt_excl = datetime.combine(dto, datetime.min.time()) + timedelta(days=1)
-
-    fk = _jl_entry_fk()
-
-    q = (
-        db.session.query(
-            JournalEntry.id,
-            JournalEntry.date,
-            JournalEntry.memo,
-            JournalEntry.access_code_id,
-            func.coalesce(func.sum(JournalLine.debit), 0.0).label("td"),
-            func.coalesce(func.sum(JournalLine.credit), 0.0).label("tc"),
-        )
-        .join(JournalLine, fk == JournalEntry.id)
-        .filter(JournalEntry.date < to_dt_excl)
-    )
-
-    if tenant_id is not None:
-        q = q.filter(JournalEntry.access_code_id == tenant_id, JournalLine.access_code_id == tenant_id)
-
-    rows = (
-        q.group_by(JournalEntry.id, JournalEntry.date, JournalEntry.memo, JournalEntry.access_code_id)
-        .having(func.abs(func.coalesce(func.sum(JournalLine.debit), 0.0) - func.coalesce(func.sum(JournalLine.credit), 0.0)) > 0.0001)
-        .order_by(JournalEntry.date.asc(), JournalEntry.id.asc())
-        .all()
-    )
-
-    return render_template("audit_unbalanced.html", rows=rows, dto=dto.strftime("%Y-%m-%d"))
+    return render_template("admin_audit_unbalanced.html", rows=rows)
 
 
 # ============================================================
-# REBUILD HELPERS (tenant-aware)
+# REBUILD: inventory + paid flags + rebuild journals (ADMIN)
 # ============================================================
-def _recalc_purchase_paid_flags(acc: AccessCode):
-    purchases = Purchase.query.filter_by(access_code_id=acc.id).all()
+@bp.post("/admin/rebuild/everything")
+def admin_rebuild_everything():
+    guard = _require_admin()
+    if guard:
+        return guard
+
+    try:
+        _rebuild_everything()
+        flash("Rebuild berhasil: inventory, paid flags, dan seluruh jurnal sudah dibuat ulang.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Gagal rebuild: {e}", "error")
+
+    return redirect(url_for("main.dashboard"))
+
+
+# ============================================================
+# EDIT / DELETE + REBUILD (STOK + JURNAL) — scoped helpers
+# ============================================================
+
+def _delete_journal_entry(entry_id: int | None, acc_id: int | None = None):
+    """
+    Hapus JournalLine + JournalEntry untuk entry_id.
+    Kalau acc_id diberikan, pastikan entry memang milik dapur tersebut.
+    """
+    if not entry_id:
+        return
+
+    q_entry = JournalEntry.query.filter_by(id=entry_id)
+    if acc_id is not None:
+        q_entry = q_entry.filter_by(access_code_id=acc_id)
+
+    entry = q_entry.first()
+    if not entry:
+        return
+
+    # relationship sudah cascade? tetap aman manual delete lines by FK
+    JournalLine.query.filter_by(entry_id=entry_id, access_code_id=entry.access_code_id).delete()
+    db.session.delete(entry)
+
+
+def _recalc_purchase_paid_flags(acc_id: int):
+    """
+    Set purchase.is_paid berdasarkan total pembayaran APayment per purchase (scoped).
+    """
+    purchases = Purchase.query.filter_by(access_code_id=acc_id).all()
     for p in purchases:
         total_paid = (
-            db.session.query(func.coalesce(func.sum(APayment.amount), 0.0))
-            .filter(APayment.access_code_id == acc.id, APayment.purchase_id == p.id)
+            db.session.query(db.func.coalesce(db.func.sum(APayment.amount), 0.0))
+            .filter(APayment.access_code_id == acc_id, APayment.purchase_id == p.id)
             .scalar()
             or 0.0
         )
@@ -2806,12 +3115,15 @@ def _recalc_purchase_paid_flags(acc: AccessCode):
         p.is_paid = bool(total_paid >= total and total > 0)
 
 
-def _recalc_invoice_paid_fields(acc: AccessCode):
-    invoices = SalesInvoice.query.filter_by(access_code_id=acc.id).all()
+def _recalc_invoice_paid_fields(acc_id: int):
+    """
+    Set invoice.paid_amount & status berdasarkan total pembayaran ARPayment per invoice (scoped).
+    """
+    invoices = SalesInvoice.query.filter_by(access_code_id=acc_id).all()
     for inv in invoices:
         total_paid = (
-            db.session.query(func.coalesce(func.sum(ARPayment.amount), 0.0))
-            .filter(ARPayment.access_code_id == acc.id, ARPayment.invoice_id == inv.id)
+            db.session.query(db.func.coalesce(db.func.sum(ARPayment.amount), 0.0))
+            .filter(ARPayment.access_code_id == acc_id, ARPayment.invoice_id == inv.id)
             .scalar()
             or 0.0
         )
@@ -2824,13 +3136,19 @@ def _recalc_invoice_paid_fields(acc: AccessCode):
             inv.status = "unpaid"
         elif inv.paid_amount >= total:
             inv.status = "paid"
-            inv.paid_amount = total
+            inv.paid_amount = total  # clamp
         else:
             inv.status = "partial"
 
 
-def _rebuild_inventory(acc: AccessCode):
-    items = Item.query.filter_by(access_code_id=acc.id).all()
+def _rebuild_inventory(acc_id: int):
+    """
+    Rebuild stok & avg_cost semua item dari histori (scoped):
+      + PurchaseItem (masuk)
+      - StockUsage (keluar)
+    Moving average sesuai logika kamu.
+    """
+    items = Item.query.filter_by(access_code_id=acc_id).all()
     for it in items:
         it.stock_qty = 0.0
         it.avg_cost = 0.0
@@ -2838,13 +3156,14 @@ def _rebuild_inventory(acc: AccessCode):
     purchase_rows = (
         db.session.query(PurchaseItem, Purchase)
         .join(Purchase, PurchaseItem.purchase_id == Purchase.id)
-        .filter(PurchaseItem.access_code_id == acc.id, Purchase.access_code_id == acc.id)
+        .filter(PurchaseItem.access_code_id == acc_id, Purchase.access_code_id == acc_id)
         .order_by(Purchase.date.asc(), Purchase.id.asc(), PurchaseItem.id.asc())
         .all()
     )
 
     usage_rows = (
-        StockUsage.query.filter_by(access_code_id=acc.id)
+        StockUsage.query
+        .filter_by(access_code_id=acc_id)
         .order_by(StockUsage.date.asc(), StockUsage.id.asc())
         .all()
     )
@@ -2883,70 +3202,113 @@ def _rebuild_inventory(acc: AccessCode):
             qty = float(u.qty or 0)
             if qty <= 0:
                 continue
+
             it.stock_qty = float(it.stock_qty or 0) - qty
             if it.stock_qty < 0:
                 it.stock_qty = 0.0
 
 
-def _rebuild_all_journals(acc: AccessCode):
-    # Hapus hanya journal dapur ini
-    JournalLine.query.filter_by(access_code_id=acc.id).delete()
-    JournalEntry.query.filter_by(access_code_id=acc.id).delete()
+def _rebuild_all_journals(acc_id: int):
+    """
+    Hapus semua journal entries/lines milik access_code_id ini lalu buat ulang
+    berdasarkan seluruh transaksi (scoped).
+    """
+    # delete lines then entries (scoped)
+    JournalLine.query.filter_by(access_code_id=acc_id).delete()
+    JournalEntry.query.filter_by(access_code_id=acc_id).delete()
 
-    # Reset FK jurnal hanya dapur ini
-    CashTransaction.query.filter_by(access_code_id=acc.id).update({CashTransaction.journal_entry_id: None})
-    Purchase.query.filter_by(access_code_id=acc.id).update({Purchase.journal_entry_id: None})
-    APayment.query.filter_by(access_code_id=acc.id).update({APayment.journal_entry_id: None})
-    StockUsage.query.filter_by(access_code_id=acc.id).update({StockUsage.journal_entry_id: None})
-    SalesInvoice.query.filter_by(access_code_id=acc.id).update({SalesInvoice.journal_entry_id: None})
-    ARPayment.query.filter_by(access_code_id=acc.id).update({ARPayment.journal_entry_id: None})
+    # reset FK jurnal di transaksi (scoped)
+    CashTransaction.query.filter_by(access_code_id=acc_id).update({CashTransaction.journal_entry_id: None})
+    Purchase.query.filter_by(access_code_id=acc_id).update({Purchase.journal_entry_id: None})
+    APayment.query.filter_by(access_code_id=acc_id).update({APayment.journal_entry_id: None})
+    StockUsage.query.filter_by(access_code_id=acc_id).update({StockUsage.journal_entry_id: None})
+    SalesInvoice.query.filter_by(access_code_id=acc_id).update({SalesInvoice.journal_entry_id: None})
+    ARPayment.query.filter_by(access_code_id=acc_id).update({ARPayment.journal_entry_id: None})
 
     db.session.flush()
 
-    txs = CashTransaction.query.filter_by(access_code_id=acc.id).order_by(CashTransaction.date.asc(), CashTransaction.id.asc()).all()
+    # 1) CashTransaction
+    txs = (
+        CashTransaction.query.filter_by(access_code_id=acc_id)
+        .order_by(CashTransaction.date.asc(), CashTransaction.id.asc())
+        .all()
+    )
     for tx in txs:
         entry = _create_journal_for_cash(tx)
         tx.journal_entry_id = entry.id
 
-    purchases = Purchase.query.filter_by(access_code_id=acc.id).order_by(Purchase.date.asc(), Purchase.id.asc()).all()
+    # 2) Purchase
+    purchases = (
+        Purchase.query.filter_by(access_code_id=acc_id)
+        .order_by(Purchase.date.asc(), Purchase.id.asc())
+        .all()
+    )
     for p in purchases:
         entry = _create_journal_for_purchase(p)
         p.journal_entry_id = entry.id
 
-    pays = APayment.query.filter_by(access_code_id=acc.id).order_by(APayment.date.asc(), APayment.id.asc()).all()
+    # 3) AP Payment
+    pays = (
+        APayment.query.filter_by(access_code_id=acc_id)
+        .order_by(APayment.date.asc(), APayment.id.asc())
+        .all()
+    )
     for pay in pays:
         entry = _create_journal_for_ap_payment(pay)
         pay.journal_entry_id = entry.id
 
-    usages = StockUsage.query.filter_by(access_code_id=acc.id).order_by(StockUsage.date.asc(), StockUsage.id.asc()).all()
+    # 4) Stock Usage
+    usages = (
+        StockUsage.query.filter_by(access_code_id=acc_id)
+        .order_by(StockUsage.date.asc(), StockUsage.id.asc())
+        .all()
+    )
     for u in usages:
         entry = _create_journal_for_stock_usage(u)
         u.journal_entry_id = entry.id
 
-    invoices = SalesInvoice.query.filter_by(access_code_id=acc.id).order_by(SalesInvoice.date.asc(), SalesInvoice.id.asc()).all()
+    # 5) Sales Invoice
+    invoices = (
+        SalesInvoice.query.filter_by(access_code_id=acc_id)
+        .order_by(SalesInvoice.date.asc(), SalesInvoice.id.asc())
+        .all()
+    )
     for inv in invoices:
         entry = _create_journal_for_invoice(inv)
         inv.journal_entry_id = entry.id
 
-    arps = ARPayment.query.filter_by(access_code_id=acc.id).order_by(ARPayment.date.asc(), ARPayment.id.asc()).all()
+    # 6) AR Payment
+    arps = (
+        ARPayment.query.filter_by(access_code_id=acc_id)
+        .order_by(ARPayment.date.asc(), ARPayment.id.asc())
+        .all()
+    )
     for p in arps:
-        inv = SalesInvoice.query.filter_by(id=p.invoice_id, access_code_id=acc.id).first() if p.invoice_id else None
+        inv = SalesInvoice.query.filter_by(access_code_id=acc_id, id=p.invoice_id).first()
         if not inv:
             continue
         entry = _create_journal_for_ar_payment(p, inv)
         p.journal_entry_id = entry.id
 
 
-def _rebuild_everything(acc: AccessCode):
-    _rebuild_inventory(acc)
-    _recalc_purchase_paid_flags(acc)
-    _recalc_invoice_paid_fields(acc)
-    _rebuild_all_journals(acc)
+def _rebuild_everything():
+    """
+    Scoped rebuild: hanya untuk access_code yang sedang login.
+    Dipanggil setelah edit/hapus transaksi pada dapur tersebut.
+    """
+    acc = _require_access()
+    if not acc:
+        raise Exception("Tidak ada akses aktif.")
+
+    _rebuild_inventory(acc.id)
+    _recalc_purchase_paid_flags(acc.id)
+    _recalc_invoice_paid_fields(acc.id)
+    _rebuild_all_journals(acc.id)
     db.session.commit()
 
 
 # ============================================================
-# AR PAYMENT - EDIT / DELETE (tenant-aware) + rebuild
+# AR PAYMENT - EDIT / DELETE (yang versi bawah file kamu) — scoped
 # ============================================================
 @bp.route("/ar/payments/<int:pay_id>/edit", methods=["GET", "POST"])
 def ar_payment_edit(pay_id: int):
@@ -2954,14 +3316,18 @@ def ar_payment_edit(pay_id: int):
     if not acc:
         return redirect(url_for("main.enter_code"))
 
-    pay = ARPayment.query.filter_by(id=pay_id, access_code_id=acc.id).first_or_404()
+    pay = ARPayment.query.filter_by(access_code_id=acc.id, id=pay_id).first_or_404()
+
     cash_accounts = (
-        Account.query.filter_by(access_code_id=acc.id)
-        .filter(Account.type == "Kas & Bank")
+        Account.query.filter_by(access_code_id=acc.id, type="Kas & Bank")
         .order_by(Account.code.asc())
         .all()
     )
-    invoices = SalesInvoice.query.filter_by(access_code_id=acc.id).order_by(SalesInvoice.date.desc()).all()
+    invoices = (
+        SalesInvoice.query.filter_by(access_code_id=acc.id)
+        .order_by(SalesInvoice.date.desc(), SalesInvoice.id.desc())
+        .all()
+    )
 
     if request.method == "POST":
         date_str = (request.form.get("date") or "").strip()
@@ -2974,7 +3340,7 @@ def ar_payment_edit(pay_id: int):
             flash("Field wajib belum lengkap.", "error")
             return redirect(url_for("main.ar_payment_edit", pay_id=pay_id))
 
-        inv = SalesInvoice.query.filter_by(id=int(invoice_id), access_code_id=acc.id).first()
+        inv = SalesInvoice.query.filter_by(access_code_id=acc.id, id=int(invoice_id)).first()
         if not inv:
             flash("Invoice tidak ditemukan.", "error")
             return redirect(url_for("main.ar_payment_edit", pay_id=pay_id))
@@ -3001,7 +3367,7 @@ def ar_payment_edit(pay_id: int):
         pay.memo = memo or None
 
         db.session.commit()
-        _rebuild_everything(acc)
+        _rebuild_everything()
 
         flash("Pembayaran piutang diupdate.", "success")
         return redirect(url_for("main.ar_payment_home"))
@@ -3015,10 +3381,12 @@ def ar_payment_delete(pay_id: int):
     if not acc:
         return redirect(url_for("main.enter_code"))
 
-    pay = ARPayment.query.filter_by(id=pay_id, access_code_id=acc.id).first_or_404()
+    pay = ARPayment.query.filter_by(access_code_id=acc.id, id=pay_id).first_or_404()
     db.session.delete(pay)
     db.session.commit()
-    _rebuild_everything(acc)
+
+    _rebuild_everything()
 
     flash("Pembayaran piutang dihapus.", "success")
     return redirect(url_for("main.ar_payment_home"))
+
