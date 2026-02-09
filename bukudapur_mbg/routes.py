@@ -55,6 +55,14 @@ def _require_admin():
 def _parse_date(s: str) -> datetime:
     return datetime.strptime(s, "%Y-%m-%d")
 
+@bp.get("/")
+def home():
+    return redirect(url_for("main.expenses_home"))  # atau cash_home
+
+@bp.get("/enter")
+def enter_code():
+    return redirect(url_for("main.expenses_home"))  # sementara
+
 
 # ============================================================
 # JOURNAL CORE (FIXED)
