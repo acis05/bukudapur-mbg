@@ -1889,26 +1889,23 @@ def sales_edit(tx_id: int):
             flash("Akun tidak valid.", "error")
             return redirect(url_for("main.sales_edit", tx_id=tx.id))
 
-        # hapus jurnal lama
+        # --- ambil entry lama kalau ada ---
+        old_entry = None
         if tx.journal_entry_id:
-            old_entry = JournalEntry.query.filter_by(id=tx.journal_entry_id, access_code_id=acc.id).first()
-            if old_entry:
-                db.session.delete(old_entry)
-                db.session.flush()
+            old_entry = JournalEntry.query.get(tx.journal_entry_id)
 
-        # update tx
-        tx.date = _parse_date(date_str)
-        tx.cash_account_code = debit_acc.code
-        tx.cash_account_name = debit_acc.name
-        tx.counter_account_code = credit_acc.code
-        tx.counter_account_name = credit_acc.name
-        tx.amount = amount
-        tx.memo = _sale_memo(customer, note)
+        # --- 1) PUTUSKAN FK DULU ---
+        tx.journal_entry_id = None
+        db.session.flush()  # WAJIB supaya UPDATE cash_transactions jalan dulu
 
-        db.session.flush()
+        # --- 2) BARU HAPUS journal_entries lama ---
+        if old_entry:
+            db.session.delete(old_entry)
+            db.session.flush()
 
-        new_entry = _create_journal_for_cash(acc, tx)
-        tx.journal_entry_id = new_entry.id
+        # --- 3) BUAT ulang jurnal baru ---
+        entry = _create_journal_for_cash(acc, tx)   # PAKAI acc juga
+        tx.journal_entry_id = entry.id
 
         db.session.commit()
         flash("Penjualan berhasil diupdate.", "success")
