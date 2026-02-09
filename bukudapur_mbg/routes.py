@@ -363,6 +363,83 @@ def _create_journal_for_cash(acc: AccessCode | None, tx: CashTransaction) -> Jou
     db.session.flush()
     return entry
 
+def _build_cash_lines(tx: CashTransaction):
+    """Return list[JournalLine] untuk transaksi kas."""
+    if tx.direction == "in":
+        return [
+            JournalLine(
+                account_code=tx.cash_account_code,
+                account_name=tx.cash_account_name,
+                debit=tx.amount,
+                credit=0,
+            ),
+            JournalLine(
+                account_code=tx.counter_account_code,
+                account_name=tx.counter_account_name,
+                debit=0,
+                credit=tx.amount,
+            ),
+        ]
+    else:
+        return [
+            JournalLine(
+                account_code=tx.counter_account_code,
+                account_name=tx.counter_account_name,
+                debit=tx.amount,
+                credit=0,
+            ),
+            JournalLine(
+                account_code=tx.cash_account_code,
+                account_name=tx.cash_account_name,
+                debit=0,
+                credit=tx.amount,
+            ),
+        ]
+
+
+def _rebuild_journal_for_cash(acc: AccessCode | None, tx: CashTransaction) -> JournalEntry:
+    """
+    Update JournalEntry existing (kalau ada), kalau belum ada -> buat baru.
+    Tidak delete journal_entries, jadi aman dari FK violation.
+    """
+    # kalau belum ada entry id, bikin baru
+    if not tx.journal_entry_id:
+        entry = JournalEntry(date=tx.date, memo=tx.memo, source="cash", source_id=tx.id)
+        _set_entry_scope(entry, acc)
+        entry.lines = _build_cash_lines(tx)
+        db.session.add(entry)
+        db.session.flush()
+        tx.journal_entry_id = entry.id
+        return entry
+
+    # kalau sudah ada, update entry itu (tanpa delete)
+    entry = JournalEntry.query.get(tx.journal_entry_id)
+    if not entry:
+        # fallback: kalau id nyangkut tapi record entry hilang
+        entry = JournalEntry(date=tx.date, memo=tx.memo, source="cash", source_id=tx.id)
+        _set_entry_scope(entry, acc)
+        entry.lines = _build_cash_lines(tx)
+        db.session.add(entry)
+        db.session.flush()
+        tx.journal_entry_id = entry.id
+        return entry
+
+    entry.date = tx.date
+    entry.memo = tx.memo
+    entry.source = "cash"
+    entry.source_id = tx.id
+    _set_entry_scope(entry, acc)
+
+    # bersihkan lines lama (delete orphan) lalu isi ulang
+    # pastikan relasi JournalEntry.lines pakai cascade="all, delete-orphan"
+    entry.lines.clear()
+    db.session.flush()  # biar orphan kehapus dulu (optional tapi bagus)
+
+    for line in _build_cash_lines(tx):
+        entry.lines.append(line)
+
+    db.session.flush()
+    return entry
 
 def _create_journal_for_purchase(acc: AccessCode | None, purchase: Purchase) -> JournalEntry:
     """
@@ -1120,8 +1197,7 @@ def cash_home():
         db.session.add(tx)
         db.session.flush()
 
-        entry = _create_journal_for_cash(acc, tx)
-        tx.journal_entry_id = entry.id
+        entry = _rebuild_journal_for_cash(acc, tx)
 
         db.session.commit()
         flash("Transaksi kas tersimpan & jurnal otomatis dibuat.", "success")
@@ -1196,8 +1272,7 @@ def cash_edit(tx_id: int):
         db.session.flush()
 
         # 3) buat ulang jurnal
-        entry = _create_journal_for_cash(acc, tx)
-        tx.journal_entry_id = entry.id
+        entry = _rebuild_journal_for_cash(acc, tx)
 
         db.session.commit()
         flash("Transaksi kas berhasil diupdate.", "success")
@@ -1813,8 +1888,7 @@ def sales_home():
         db.session.add(tx)
         db.session.flush()
 
-        entry = _create_journal_for_cash(acc, tx)
-        tx.journal_entry_id = entry.id
+        entry = _rebuild_journal_for_cash(acc, tx)
 
         db.session.commit()
         flash("Penjualan tersimpan & jurnal otomatis dibuat.", "success")
@@ -1904,8 +1978,7 @@ def sales_edit(tx_id: int):
             db.session.flush()
 
         # --- 3) BUAT ulang jurnal baru ---
-        entry = _create_journal_for_cash(acc, tx)   # PAKAI acc juga
-        tx.journal_entry_id = entry.id
+        entry = _rebuild_journal_for_cash(acc, tx)
 
         db.session.commit()
         flash("Penjualan berhasil diupdate.", "success")
@@ -2103,8 +2176,7 @@ def expenses_home():
         db.session.add(tx)
         db.session.flush()
 
-        entry = _create_journal_for_cash(acc, tx)
-        tx.journal_entry_id = entry.id
+        entry = _rebuild_journal_for_cash(acc, tx)
 
         db.session.commit()
         flash("Biaya operasional tersimpan & jurnal dibuat.", "success")
@@ -2184,8 +2256,7 @@ def expense_edit(tx_id: int):
                 db.session.delete(old)
                 db.session.flush()
 
-        entry = _create_journal_for_cash(acc, tx)
-        tx.journal_entry_id = entry.id
+        entry = _rebuild_journal_for_cash(acc, tx)
 
         db.session.commit()
         flash("Transaksi biaya berhasil diupdate.", "success")
@@ -3269,8 +3340,7 @@ def _rebuild_all_journals(acc_id: int):
         .all()
     )
     for tx in txs:
-        entry = _create_journal_for_cash(acc, tx)
-        tx.journal_entry_id = entry.id
+        entry = _rebuild_journal_for_cash(acc, tx)
 
     # 2) Purchase
     purchases = (
