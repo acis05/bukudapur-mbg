@@ -450,7 +450,7 @@ def rebuild_journal_for_purchase(acc, purchase):
 
     # 4️⃣ posting debit / kredit
     # Debit: Persediaan / Beban
-    entry.items.append(JournalItem(
+    entry.lines.append(JournalLine(
         account_code=purchase.expense_account_code,
         account_name=purchase.expense_account_name,
         debit=purchase.amount,
@@ -458,7 +458,7 @@ def rebuild_journal_for_purchase(acc, purchase):
     ))
 
     # Kredit: Hutang Usaha
-    entry.items.append(JournalItem(
+    entry.lines.append(JournalLine(
         account_code=purchase.ap_account_code,
         account_name=purchase.ap_account_name,
         debit=0,
@@ -645,7 +645,7 @@ def rebuild_journal_for_invoice(acc, inv):
     db.session.flush()
 
     # Debit: Piutang Usaha
-    entry.items.append(JournalItem(
+    entry.lines.append(JournalLine(
         account_code=inv.ar_account_code,
         account_name=inv.ar_account_name,
         debit=inv.total_amount,
@@ -653,7 +653,7 @@ def rebuild_journal_for_invoice(acc, inv):
     ))
 
     # Kredit: Pendapatan
-    entry.items.append(JournalItem(
+    entry.lines.append(JournalLine(
         account_code=inv.revenue_account_code,
         account_name=inv.revenue_account_name,
         debit=0,
@@ -765,7 +765,7 @@ def rebuild_journal_for_ar_payment(acc, pay):
     db.session.flush()
 
     # Debit: Kas
-    entry.items.append(JournalItem(
+    entry.lines.append(JournalLine(
         account_code=pay.cash_account_code,
         account_name=pay.cash_account_name,
         debit=pay.amount,
@@ -773,7 +773,7 @@ def rebuild_journal_for_ar_payment(acc, pay):
     ))
 
     # Kredit: Piutang
-    entry.items.append(JournalItem(
+    entry.lines.append(JournalLine(
         account_code=pay.ar_account_code,
         account_name=pay.ar_account_name,
         debit=0,
