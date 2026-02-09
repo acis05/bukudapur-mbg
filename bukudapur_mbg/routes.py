@@ -1120,7 +1120,7 @@ def cash_home():
         db.session.add(tx)
         db.session.flush()
 
-        entry = _create_journal_for_cash(tx)
+        entry = _create_journal_for_cash(acc, tx)
         tx.journal_entry_id = entry.id
 
         db.session.commit()
@@ -1196,7 +1196,7 @@ def cash_edit(tx_id: int):
         db.session.flush()
 
         # 3) buat ulang jurnal
-        entry = _create_journal_for_cash(tx)
+        entry = _create_journal_for_cash(acc, tx)
         tx.journal_entry_id = entry.id
 
         db.session.commit()
@@ -1813,7 +1813,7 @@ def sales_home():
         db.session.add(tx)
         db.session.flush()
 
-        entry = _create_journal_for_cash(tx)
+        entry = _create_journal_for_cash(acc, tx)
         tx.journal_entry_id = entry.id
 
         db.session.commit()
@@ -1907,7 +1907,7 @@ def sales_edit(tx_id: int):
 
         db.session.flush()
 
-        new_entry = _create_journal_for_cash(tx)
+        new_entry = _create_journal_for_cash(acc, tx)
         tx.journal_entry_id = new_entry.id
 
         db.session.commit()
@@ -2106,7 +2106,7 @@ def expenses_home():
         db.session.add(tx)
         db.session.flush()
 
-        entry = _create_journal_for_cash(tx)
+        entry = _create_journal_for_cash(acc, tx)
         tx.journal_entry_id = entry.id
 
         db.session.commit()
@@ -2187,7 +2187,7 @@ def expense_edit(tx_id: int):
                 db.session.delete(old)
                 db.session.flush()
 
-        entry = _create_journal_for_cash(tx)
+        entry = _create_journal_for_cash(acc, tx)
         tx.journal_entry_id = entry.id
 
         db.session.commit()
@@ -3272,7 +3272,7 @@ def _rebuild_all_journals(acc_id: int):
         .all()
     )
     for tx in txs:
-        entry = _create_journal_for_cash(tx)
+        entry = _create_journal_for_cash(acc, tx)
         tx.journal_entry_id = entry.id
 
     # 2) Purchase
