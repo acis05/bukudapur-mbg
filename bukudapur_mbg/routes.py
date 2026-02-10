@@ -930,6 +930,16 @@ def logout():
     flash("Keluar.", "success")
     return redirect(url_for("main.enter_code"))
 
+@bp.get("/reports/ledger")
+def report_ledger():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+
+    # sementara: kalau file report_ledger.html belum ada / belum siap
+    # kamu bisa redirect ke journals dulu
+    return redirect(url_for("main.journals_list"))
+
 
 # ============================================================
 # PART 2/4 — MASTER DATA (scoped per access_code_id)
