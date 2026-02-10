@@ -63,6 +63,57 @@ from .pdf_utils import (
 # =========================
 bp = Blueprint("main", __name__)
 
+# ============================================================
+# QUICK FIX — Stub endpoints supaya dashboard tidak crash
+# (Karena template memanggil url_for('main.report_profit_loss') dll)
+# ============================================================
+
+@bp.get("/reports/ledger")
+def report_ledger():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+    # sementara arahkan ke jurnal list
+    return redirect(url_for("main.journals_list"))
+
+
+@bp.get("/reports/profit-loss")
+def report_profit_loss():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+    # sementara arahkan ke jurnal list
+    return redirect(url_for("main.journals_list"))
+
+
+@bp.get("/reports/balance-sheet")
+def report_balance_sheet():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+    # sementara arahkan ke jurnal list
+    return redirect(url_for("main.journals_list"))
+
+
+# kalau dashboard/base ada tombol PDF, siapkan juga biar tidak BuildError
+@bp.get("/reports/profit-loss.pdf")
+def export_profit_loss_pdf():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+    flash("Export PDF Laba Rugi belum diaktifkan di versi ini.", "error")
+    return redirect(url_for("main.report_profit_loss"))
+
+
+@bp.get("/reports/balance-sheet.pdf")
+def export_balance_sheet_pdf():
+    acc = _require_access()
+    if not acc:
+        return redirect(url_for("main.enter_code"))
+    flash("Export PDF Neraca belum diaktifkan di versi ini.", "error")
+    return redirect(url_for("main.report_balance_sheet"))
+
+
 # =========================
 # Session Keys
 # =========================
@@ -929,16 +980,6 @@ def logout():
     session.pop(SESSION_KEY, None)
     flash("Keluar.", "success")
     return redirect(url_for("main.enter_code"))
-
-@bp.get("/reports/ledger")
-def report_ledger():
-    acc = _require_access()
-    if not acc:
-        return redirect(url_for("main.enter_code"))
-
-    # sementara: kalau file report_ledger.html belum ada / belum siap
-    # kamu bisa redirect ke journals dulu
-    return redirect(url_for("main.journals_list"))
 
 
 # ============================================================
