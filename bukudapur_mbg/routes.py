@@ -448,49 +448,72 @@ def _build_cash_lines(tx: CashTransaction):
         ]
 
 
-def _rebuild_journal_for_cash(acc: AccessCode | None, tx: CashTransaction) -> JournalEntry:
-    """
-    Update JournalEntry existing (kalau ada), kalau belum ada -> buat baru.
-    Tidak delete journal_entries, jadi aman dari FK violation.
-    """
-    # kalau belum ada entry id, bikin baru
-    if not tx.journal_entry_id:
-        entry = JournalEntry(date=tx.date, memo=tx.memo, source="cash", source_id=tx.id)
-        _set_entry_scope(entry, acc)
-        entry.lines = _build_cash_lines(tx)
-        db.session.add(entry)
+def _rebuild_journal_for_cash(acc: AccessCode, tx: CashTransaction) -> JournalEntry:
+    # 1. PUTUS FK DULU
+    old_entry_id = tx.journal_entry_id
+    tx.journal_entry_id = None
+    db.session.flush()
+
+    # 2. HAPUS JOURNAL LAMA (SCOPED)
+    if old_entry_id:
+        JournalLine.query.filter_by(
+            access_code_id=acc.id,
+            entry_id=old_entry_id
+        ).delete()
+        JournalEntry.query.filter_by(
+            access_code_id=acc.id,
+            id=old_entry_id
+        ).delete()
         db.session.flush()
-        tx.journal_entry_id = entry.id
-        return entry
 
-    # kalau sudah ada, update entry itu (tanpa delete)
-    entry = JournalEntry.query.get(tx.journal_entry_id)
-    if not entry:
-        # fallback: kalau id nyangkut tapi record entry hilang
-        entry = JournalEntry(date=tx.date, memo=tx.memo, source="cash", source_id=tx.id)
-        _set_entry_scope(entry, acc)
-        entry.lines = _build_cash_lines(tx)
-        db.session.add(entry)
-        db.session.flush()
-        tx.journal_entry_id = entry.id
-        return entry
+    # 3. BUAT ENTRY BARU
+    entry = JournalEntry(
+        access_code_id=acc.id,
+        date=tx.date,
+        memo=tx.memo,
+        source="cash",
+        source_id=tx.id,
+    )
+    db.session.add(entry)
+    db.session.flush()
 
-    entry.date = tx.date
-    entry.memo = tx.memo
-    entry.source = "cash"
-    entry.source_id = tx.id
-    _set_entry_scope(entry, acc)
+    # 4. BUAT LINES (WAJIB access_code_id)
+    if tx.direction == "out":
+        debit_code = tx.counter_account_code
+        debit_name = tx.counter_account_name
+        credit_code = tx.cash_account_code
+        credit_name = tx.cash_account_name
+    else:
+        debit_code = tx.cash_account_code
+        debit_name = tx.cash_account_name
+        credit_code = tx.counter_account_code
+        credit_name = tx.counter_account_name
 
-    # bersihkan lines lama (delete orphan) lalu isi ulang
-    # pastikan relasi JournalEntry.lines pakai cascade="all, delete-orphan"
-    entry.lines.clear()
-    db.session.flush()  # biar orphan kehapus dulu (optional tapi bagus)
-
-    for line in _build_cash_lines(tx):
-        entry.lines.append(line)
+    db.session.add_all([
+        JournalLine(
+            access_code_id=acc.id,
+            entry_id=entry.id,
+            account_code=debit_code,
+            account_name=debit_name,
+            debit=tx.amount,
+            credit=0,
+        ),
+        JournalLine(
+            access_code_id=acc.id,
+            entry_id=entry.id,
+            account_code=credit_code,
+            account_name=credit_name,
+            debit=0,
+            credit=tx.amount,
+        ),
+    ])
 
     db.session.flush()
+
+    # 5. SET FK KEMBALI
+    tx.journal_entry_id = entry.id
     return entry
+
 
 def _create_journal_for_purchase(acc: AccessCode | None, purchase: Purchase) -> JournalEntry:
     """
